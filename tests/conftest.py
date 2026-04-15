@@ -24,6 +24,8 @@ _SETTINGS_ENV_VARS: tuple[str, ...] = (
     "RETRIEVAL_RERANK_TOP_N",
     "LOG_LEVEL",
     "LOG_JSON",
+    "LANGCHAIN_TRACING_V2",
+    "LANGCHAIN_API_KEY",
 )
 
 

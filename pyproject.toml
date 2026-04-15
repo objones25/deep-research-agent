@@ -32,6 +32,8 @@ dependencies = [
     "httpx>=0.28",
     # JWT auth
     "pyjwt>=2.10",
+    # Structured logging
+    "structlog>=24.4.0",
 ]
 
 [project.optional-dependencies]
@@ -44,6 +46,9 @@ dev = [
     "mypy>=1.15",
     # Type stubs
     "types-pyjwt",
+    # Security scanning
+    "bandit[toml]>=1.8",
+    "pip-audit>=2.6",
 ]
 
 [build-system]

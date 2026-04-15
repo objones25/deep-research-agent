@@ -74,3 +74,57 @@ class ToolResult:
     content: str | None = None
     error: str | None = None
     metadata: dict[str, str] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Agent I/O
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ResearchQuery:
+    """Input value object for a research request.
+
+    ``max_iterations`` caps the ReAct loop to prevent infinite cycles.
+    Validated eagerly so callers fail fast on bad inputs.
+    """
+
+    query: str
+    session_id: str
+    max_iterations: int = 5
+
+    def __post_init__(self) -> None:
+        if not self.query.strip():
+            raise ValueError("query must not be empty or whitespace.")
+        if not self.session_id:
+            raise ValueError("session_id must not be empty.")
+        if self.max_iterations < 1:
+            raise ValueError("max_iterations must be a positive integer.")
+
+
+@dataclass(frozen=True)
+class Citation:
+    """A single source cited in a research report."""
+
+    url: str
+    content_snippet: str
+    relevance_score: float
+
+
+@dataclass(frozen=True)
+class ResearchReport:
+    """The completed output of a research session.
+
+    ``citations`` may be empty if no retrievable sources were found.
+    """
+
+    query: str
+    summary: str
+    citations: list[Citation]
+    session_id: str
+
+    def __post_init__(self) -> None:
+        if not self.query.strip():
+            raise ValueError("query must not be empty.")
+        if not self.session_id:
+            raise ValueError("session_id must not be empty.")

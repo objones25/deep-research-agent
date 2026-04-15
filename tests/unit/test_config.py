@@ -103,6 +103,14 @@ class TestSettingsDefaults:
         settings = Settings(_env_file=None, **{k.lower(): v for k, v in env.items()})
         assert settings.qdrant_api_key is None
 
+    def test_default_langchain_tracing_v2_is_false(self) -> None:
+        settings = _make_settings()
+        assert settings.langchain_tracing_v2 is False
+
+    def test_default_langchain_api_key_is_none(self) -> None:
+        settings = _make_settings()
+        assert settings.langchain_api_key is None
+
 
 @pytest.mark.unit
 class TestSettingsOverrides:
@@ -146,6 +154,15 @@ class TestSettingsOverrides:
         settings = _make_settings(mem0_retention_days="7")
         assert settings.mem0_retention_days == 7
 
+    def test_langchain_tracing_v2_enabled(self) -> None:
+        settings = _make_settings(langchain_tracing_v2="true")
+        assert settings.langchain_tracing_v2 is True
+
+    def test_langchain_api_key_set(self) -> None:
+        settings = _make_settings(langchain_api_key="ls__abc123def456")
+        assert settings.langchain_api_key is not None
+        assert settings.langchain_api_key.get_secret_value() == "ls__abc123def456"
+
 
 # ---------------------------------------------------------------------------
 # Secret values are not leaked by repr/str
@@ -173,6 +190,10 @@ class TestSecretRedaction:
     def test_secret_value_accessible_via_get_secret_value(self) -> None:
         settings = _make_settings()
         assert settings.hf_token.get_secret_value() == _VALID_ENV["HF_TOKEN"]
+
+    def test_langchain_api_key_not_in_repr(self) -> None:
+        settings = _make_settings(langchain_api_key="ls__supersecret")
+        assert "ls__supersecret" not in repr(settings)
 
 
 # ---------------------------------------------------------------------------

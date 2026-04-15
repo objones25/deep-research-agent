@@ -165,6 +165,25 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
+    # LangSmith (AI pipeline tracing — set LANGCHAIN_TRACING_V2=true to enable)
+    # ------------------------------------------------------------------
+
+    langchain_tracing_v2: bool = Field(
+        default=False,
+        description=(
+            "Enable LangSmith tracing for LangGraph nodes, LLM calls, and tool "
+            "executions. Set to true in production/Railway to activate."
+        ),
+    )
+    langchain_api_key: SecretStr | None = Field(
+        default=None,
+        description=(
+            "LangSmith API key. Required when langchain_tracing_v2 is True. "
+            "Obtain from https://smith.langchain.com/settings."
+        ),
+    )
+
+    # ------------------------------------------------------------------
     # Validators
     # ------------------------------------------------------------------
 
