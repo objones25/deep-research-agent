@@ -12,6 +12,16 @@ from urllib.parse import urlparse
 
 
 @dataclass(frozen=True)
+class ToolInput:
+    """Base class for all tool inputs.
+
+    Subclass this to define the input contract for a new tool.  The ``Tool``
+    protocol's ``execute`` method accepts any ``ToolInput``, so adding a new
+    tool never requires modifying this module — only a new subclass is needed.
+    """
+
+
+@dataclass(frozen=True)
 class ToolResult:
     """Immutable value object representing the outcome of a tool execution.
 
@@ -26,7 +36,7 @@ class ToolResult:
 
 
 @dataclass(frozen=True)
-class SearchInput:
+class SearchInput(ToolInput):
     """Input for a web-search tool invocation.
 
     Raises:
@@ -44,7 +54,7 @@ class SearchInput:
 
 
 @dataclass(frozen=True)
-class ScrapeInput:
+class ScrapeInput(ToolInput):
     """Input for a single-URL scrape tool invocation.
 
     Raises:
@@ -85,7 +95,7 @@ class Tool(Protocol):
         """Human-readable summary used by the agent to decide when to invoke this tool."""
         ...
 
-    async def execute(self, tool_input: SearchInput | ScrapeInput) -> ToolResult:
+    async def execute(self, tool_input: ToolInput) -> ToolResult:
         """Execute the tool and return a result.
 
         Raises:

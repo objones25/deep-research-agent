@@ -24,6 +24,7 @@ from research_agent.tools.protocols import (
     ScrapeInput,
     SearchInput,
     ToolExecutionError,
+    ToolInput,
     ToolResult,
 )
 
@@ -103,7 +104,7 @@ class FirecrawlSearchTool(_FirecrawlBaseTool):
             "or want to discover relevant URLs before scraping."
         )
 
-    async def execute(self, tool_input: SearchInput | ScrapeInput) -> ToolResult:
+    async def execute(self, tool_input: ToolInput) -> ToolResult:
         """Run a web search via Firecrawl.
 
         Args:
@@ -154,7 +155,7 @@ class FirecrawlScrapeTool(_FirecrawlBaseTool):
             "without navigating to it manually."
         )
 
-    async def execute(self, tool_input: SearchInput | ScrapeInput) -> ToolResult:
+    async def execute(self, tool_input: ToolInput) -> ToolResult:
         """Scrape a URL via Firecrawl.
 
         Args:

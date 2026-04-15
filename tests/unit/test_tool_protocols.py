@@ -15,8 +15,36 @@ from research_agent.tools.protocols import (
     SearchInput,
     Tool,
     ToolExecutionError,
+    ToolInput,
     ToolResult,
 )
+
+# ---------------------------------------------------------------------------
+# ToolInput
+# ---------------------------------------------------------------------------
+
+
+class TestToolInput:
+    def test_is_a_dataclass(self) -> None:
+        assert dataclasses.is_dataclass(ToolInput)
+
+    def test_is_frozen(self) -> None:
+        # ToolInput itself has no fields, but the frozen flag must be set so
+        # subclasses that inherit it are also frozen by default.
+        assert ToolInput.__dataclass_params__.frozen  # type: ignore[attr-defined]
+
+    def test_search_input_is_subclass(self) -> None:
+        assert issubclass(SearchInput, ToolInput)
+
+    def test_scrape_input_is_subclass(self) -> None:
+        assert issubclass(ScrapeInput, ToolInput)
+
+    def test_search_input_instance_is_tool_input(self) -> None:
+        assert isinstance(SearchInput(query="test"), ToolInput)
+
+    def test_scrape_input_instance_is_tool_input(self) -> None:
+        assert isinstance(ScrapeInput(url="https://example.com"), ToolInput)
+
 
 # ---------------------------------------------------------------------------
 # ToolResult
@@ -187,7 +215,7 @@ class TestToolProtocol:
             def description(self) -> str:
                 return "Does something useful."
 
-            async def execute(self, tool_input: SearchInput | ScrapeInput) -> ToolResult:
+            async def execute(self, tool_input: ToolInput) -> ToolResult:
                 return ToolResult(is_error=False, content="result")
 
         assert isinstance(GoodTool(), Tool)
@@ -198,7 +226,7 @@ class TestToolProtocol:
             def description(self) -> str:
                 return "no name"
 
-            async def execute(self, tool_input: SearchInput | ScrapeInput) -> ToolResult:
+            async def execute(self, tool_input: ToolInput) -> ToolResult:
                 return ToolResult(is_error=False, content="x")
 
         assert not isinstance(NoName(), Tool)
@@ -209,7 +237,7 @@ class TestToolProtocol:
             def name(self) -> str:
                 return "no_desc"
 
-            async def execute(self, tool_input: SearchInput | ScrapeInput) -> ToolResult:
+            async def execute(self, tool_input: ToolInput) -> ToolResult:
                 return ToolResult(is_error=False, content="x")
 
         assert not isinstance(NoDescription(), Tool)

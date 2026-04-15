@@ -6,6 +6,7 @@ from research_agent.tools.protocols import (
     SearchInput,
     Tool,
     ToolExecutionError,
+    ToolInput,
     ToolResult,
 )
 
@@ -16,5 +17,6 @@ __all__ = [
     "SearchInput",
     "Tool",
     "ToolExecutionError",
+    "ToolInput",
     "ToolResult",
 ]
