@@ -98,5 +98,9 @@ def create_app(agent_runner: AgentRunner | None = None) -> FastAPI:
     return app
 
 
-# Module-level app instance used by ``uvicorn`` / ``fastapi dev``
-app = create_app()
+# No module-level app instance. Use uvicorn's --factory flag:
+#
+#   uvicorn research_agent.api.main:create_app --factory
+#
+# This prevents get_settings() from running at import time, which would fail
+# in test collection where env vars are not yet set by fixtures.
