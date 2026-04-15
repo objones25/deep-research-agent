@@ -66,11 +66,16 @@ class Mem0MemoryService:
         — this guards against schema changes in the Mem0 API response.
         """
         t0 = time.perf_counter()
-        results: list[dict[str, object]] = await self._client.search(
+        # The v2 Mem0 API requires user_id inside the filters object.
+        # Passing user_id as a top-level kwarg sends it as a bare JSON field
+        # which the v2 endpoint rejects with 400.
+        response: dict[str, object] = await self._client.search(
             query,
-            user_id=session_id,
+            filters={"AND": [{"user_id": session_id}]},
         )
-        memories = [str(r["memory"]) for r in results if "memory" in r]
+        raw: object = response.get("results", [])
+        raw_results: list[dict[str, object]] = raw if isinstance(raw, list) else []
+        memories = [str(r["memory"]) for r in raw_results if isinstance(r, dict) and "memory" in r]
         _log.info(
             "memory_search_complete",
             session_id=session_id,

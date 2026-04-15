@@ -21,14 +21,19 @@ from research_agent.memory.protocols import MemoryService
 
 @pytest.fixture()
 def mock_client() -> MagicMock:
-    """Return a MagicMock whose async methods are AsyncMocks."""
+    """Return a MagicMock whose async methods are AsyncMocks.
+
+    The search mock returns the v2 API envelope format: ``{"results": [...]}``.
+    """
     client = MagicMock()
     client.add = AsyncMock(return_value=None)
     client.search = AsyncMock(
-        return_value=[
-            {"id": "mem_1", "memory": "Paris is the capital of France", "score": 0.95},
-            {"id": "mem_2", "memory": "The Eiffel Tower is in Paris", "score": 0.87},
-        ]
+        return_value={
+            "results": [
+                {"id": "mem_1", "memory": "Paris is the capital of France", "score": 0.95},
+                {"id": "mem_2", "memory": "The Eiffel Tower is in Paris", "score": 0.87},
+            ]
+        }
     )
     return client
 
@@ -114,12 +119,13 @@ class TestMem0ServiceSearch:
         args, _ = mock_client.search.call_args
         assert args[0] == "my query"
 
-    async def test_search_passes_session_id_as_user_id(
+    async def test_search_passes_session_id_in_filters(
         self, service: Mem0MemoryService, mock_client: MagicMock
     ) -> None:
         await service.search(session_id="sess_xyz", query="anything")
         _, kwargs = mock_client.search.call_args
-        assert kwargs["user_id"] == "sess_xyz"
+        # v2 API requires user_id inside filters, not as a top-level kwarg
+        assert kwargs["filters"] == {"AND": [{"user_id": "sess_xyz"}]}
 
     async def test_search_returns_list_of_strings(
         self, service: Mem0MemoryService, mock_client: MagicMock
@@ -140,17 +146,19 @@ class TestMem0ServiceSearch:
     async def test_search_returns_empty_list_when_no_results(
         self, service: Mem0MemoryService, mock_client: MagicMock
     ) -> None:
-        mock_client.search.return_value = []
+        mock_client.search.return_value = {"results": []}
         results = await service.search(session_id="sess_1", query="obscure query")
         assert results == []
 
     async def test_search_ignores_entries_missing_memory_field(
         self, service: Mem0MemoryService, mock_client: MagicMock
     ) -> None:
-        mock_client.search.return_value = [
-            {"id": "mem_1", "memory": "valid entry", "score": 0.9},
-            {"id": "mem_2", "score": 0.8},  # no "memory" key
-        ]
+        mock_client.search.return_value = {
+            "results": [
+                {"id": "mem_1", "memory": "valid entry", "score": 0.9},
+                {"id": "mem_2", "score": 0.8},  # no "memory" key
+            ]
+        }
         results = await service.search(session_id="sess_1", query="q")
         assert results == ["valid entry"]
 
@@ -194,7 +202,7 @@ class TestMem0ServiceLogging:
     async def test_search_logs_hit_false_when_no_results(
         self, service: Mem0MemoryService, mock_client: MagicMock
     ) -> None:
-        mock_client.search.return_value = []
+        mock_client.search.return_value = {"results": []}
         with capture_logs() as cap:
             await service.search(session_id="sess-log", query="nothing")
         entry = next(e for e in cap if e["event"] == "memory_search_complete")
