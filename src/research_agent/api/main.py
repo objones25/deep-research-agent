@@ -64,10 +64,18 @@ async def _build_agent_runner(settings: Settings) -> AgentRunner:
     from research_agent.tools.protocols import Tool
 
     # ------------------------------------------------------------------
-    # Shared HuggingFace inference client (embedder + LLM reuse one client)
+    # HuggingFace inference clients
+    #
+    # Two separate clients are required because Featherless AI only supports
+    # conversational/text-generation tasks — it does NOT support
+    # feature-extraction (embeddings).  The standard HF Inference API
+    # (no provider kwarg) handles embeddings for public models.
     # ------------------------------------------------------------------
     hf_client = AsyncInferenceClient(
         provider="featherless-ai",
+        api_key=settings.hf_token.get_secret_value(),
+    )
+    embed_client = AsyncInferenceClient(
         api_key=settings.hf_token.get_secret_value(),
     )
 
@@ -89,7 +97,7 @@ async def _build_agent_runner(settings: Settings) -> AgentRunner:
     # Retrieval components
     # ------------------------------------------------------------------
     embedder = HuggingFaceEmbedder(
-        client=hf_client,
+        client=embed_client,
         model=settings.embedding_model,
         expected_dim=settings.qdrant_vector_size,
     )
