@@ -33,6 +33,12 @@ def _required_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SECRET_KEY", "a" * 64)  # 64 chars = 64 bytes > 32 minimum
 
 
+@pytest.fixture()
+def mock_runner() -> AsyncMock:
+    """Minimal AgentRunner mock — prevents _build_agent_runner from running in lifespan."""
+    return _make_runner()
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -100,9 +106,9 @@ def _mock_httpx_success() -> tuple[object, object]:
 
 @pytest.mark.unit
 class TestHealthRoute:
-    def test_health_returns_200_when_qdrant_reachable(self) -> None:
+    def test_health_returns_200_when_qdrant_reachable(self, mock_runner: AsyncMock) -> None:
         """Health returns 200 and status='ok' when Qdrant responds 200."""
-        app = create_app()
+        app = create_app(agent_runner=mock_runner)
         mock_ctx, _client = _mock_httpx_success()
 
         with (
@@ -117,11 +123,11 @@ class TestHealthRoute:
         assert body["checks"]["qdrant"] == "ok"
         assert "timestamp" in body
 
-    def test_health_returns_503_when_qdrant_connect_error(self) -> None:
+    def test_health_returns_503_when_qdrant_connect_error(self, mock_runner: AsyncMock) -> None:
         """Health returns 503 when Qdrant raises a connection error."""
         import httpx
 
-        app = create_app()
+        app = create_app(agent_runner=mock_runner)
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
 
@@ -140,11 +146,11 @@ class TestHealthRoute:
         assert body["status"] == "error"
         assert body["checks"]["qdrant"] == "error"
 
-    def test_health_returns_503_when_qdrant_timeout(self) -> None:
+    def test_health_returns_503_when_qdrant_timeout(self, mock_runner: AsyncMock) -> None:
         """Health returns 503 when the Qdrant probe times out."""
         import httpx
 
-        app = create_app()
+        app = create_app(agent_runner=mock_runner)
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
 
@@ -160,9 +166,9 @@ class TestHealthRoute:
 
         assert response.status_code == 503
 
-    def test_health_response_includes_iso_timestamp(self) -> None:
+    def test_health_response_includes_iso_timestamp(self, mock_runner: AsyncMock) -> None:
         """Health response always contains a non-empty ISO 8601 timestamp."""
-        app = create_app()
+        app = create_app(agent_runner=mock_runner)
         mock_ctx, _client = _mock_httpx_success()
 
         with (
@@ -175,9 +181,9 @@ class TestHealthRoute:
         ts = response.json()["timestamp"]
         assert isinstance(ts, str) and len(ts) > 0
 
-    def test_health_does_not_require_authorization(self) -> None:
+    def test_health_does_not_require_authorization(self, mock_runner: AsyncMock) -> None:
         """GET /health is reachable without an Authorization header (unauthenticated)."""
-        app = create_app()  # No dependency overrides — real auth not wired to /health
+        app = create_app(agent_runner=mock_runner)
         mock_ctx, _client = _mock_httpx_success()
 
         with (
@@ -188,9 +194,9 @@ class TestHealthRoute:
 
         assert response.status_code != 401
 
-    def test_health_checks_dict_contains_qdrant_key(self) -> None:
+    def test_health_checks_dict_contains_qdrant_key(self, mock_runner: AsyncMock) -> None:
         """The 'checks' dict in the health response always includes a 'qdrant' key."""
-        app = create_app()
+        app = create_app(agent_runner=mock_runner)
         mock_ctx, _client = _mock_httpx_success()
 
         with (
@@ -324,9 +330,10 @@ class TestResearchRoute:
 
     def test_returns_503_when_no_agent_runner_configured(self) -> None:
         """POST /research returns 503 when no AgentRunner is wired up (None)."""
-        app = _make_app_with_auth_bypassed(agent_runner=None)
+        app = _make_app_with_auth_bypassed(agent_runner=_make_runner())
 
         with TestClient(app, raise_server_exceptions=False) as client:
+            app.state.agent_runner = None  # simulate missing runner at request time
             response = client.post("/research", json={"query": "test"})
 
         assert response.status_code == 503

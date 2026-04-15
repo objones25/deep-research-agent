@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from research_agent.agent.graph import create_graph
-from research_agent.models.research import ResearchQuery, SearchResult
+from research_agent.agent.graph import CompiledGraphRunner, create_graph
+from research_agent.models.research import ResearchQuery, ResearchReport, SearchResult
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -282,3 +282,71 @@ class TestGraphExecution:
             }
         )
         memory.add.assert_awaited()
+
+
+# ---------------------------------------------------------------------------
+# CompiledGraphRunner
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestCompiledGraphRunner:
+    @pytest.mark.asyncio
+    async def test_run_returns_research_report(self) -> None:
+        graph = create_graph(
+            retriever=_mock_retriever(),
+            reranker=_mock_reranker(),
+            memory_service=_mock_memory(),
+            llm_client=_mock_llm("<final_answer>Runner answer.</final_answer>"),
+            tools=[],
+        )
+        runner = CompiledGraphRunner(graph)
+        query = ResearchQuery(query="What is the speed of light?", session_id="sess-r1")
+        report = await runner.run(query)
+        assert isinstance(report, ResearchReport)
+        assert report.query == "What is the speed of light?"
+        assert report.session_id == "sess-r1"
+
+    @pytest.mark.asyncio
+    async def test_run_propagates_query_fields(self) -> None:
+        graph = create_graph(
+            retriever=_mock_retriever(),
+            reranker=_mock_reranker(),
+            memory_service=_mock_memory(),
+            llm_client=_mock_llm("<final_answer>Propagated.</final_answer>"),
+            tools=[],
+        )
+        runner = CompiledGraphRunner(graph)
+        query = ResearchQuery(query="test propagation", session_id="sess-prop")
+        report = await runner.run(query)
+        assert report.query == "test propagation"
+        assert report.session_id == "sess-prop"
+
+    @pytest.mark.asyncio
+    async def test_run_raises_when_no_final_report(self) -> None:
+        """If the graph somehow returns no final_report, CompiledGraphRunner raises."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        fake_graph = MagicMock()
+        fake_graph.ainvoke = AsyncMock(return_value={"final_report": None})
+
+        runner = CompiledGraphRunner(fake_graph)
+        with pytest.raises(RuntimeError, match="final report"):
+            await runner.run(ResearchQuery(query="q", session_id="s"))
+
+    @pytest.mark.asyncio
+    async def test_multiple_runs_are_independent(self) -> None:
+        graph = create_graph(
+            retriever=_mock_retriever(),
+            reranker=_mock_reranker(),
+            memory_service=_mock_memory(),
+            llm_client=_mock_llm("<final_answer>Independent.</final_answer>"),
+            tools=[],
+        )
+        runner = CompiledGraphRunner(graph)
+        q1 = ResearchQuery(query="query one", session_id="s1")
+        q2 = ResearchQuery(query="query two", session_id="s2")
+        r1 = await runner.run(q1)
+        r2 = await runner.run(q2)
+        assert r1.query == "query one"
+        assert r2.query == "query two"

@@ -114,6 +114,13 @@ class Settings(BaseSettings):
     firecrawl_api_key: SecretStr = Field(
         description="Firecrawl API key for web content acquisition via MCP.",
     )
+    firecrawl_mcp_url: str = Field(
+        default="https://mcp.firecrawl.dev",
+        description=(
+            "Base URL of the Firecrawl remote MCP server. "
+            "The API key is appended as a path segment at runtime."
+        ),
+    )
 
     # ------------------------------------------------------------------
     # FastAPI / Authentication

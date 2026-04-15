@@ -48,6 +48,7 @@ from research_agent.agent.nodes import (
 from research_agent.agent.state import AgentState
 from research_agent.llm.protocols import LLMClient
 from research_agent.memory.protocols import MemoryService
+from research_agent.models.research import ResearchQuery, ResearchReport
 from research_agent.retrieval.protocols import Reranker, Retriever
 from research_agent.tools.protocols import Tool
 
@@ -164,3 +165,67 @@ def create_graph(
     builder.add_edge("synthesize", END)
 
     return builder.compile()
+
+
+# ---------------------------------------------------------------------------
+# AgentRunner implementation
+# ---------------------------------------------------------------------------
+
+
+class CompiledGraphRunner:
+    """Wraps a LangGraph compiled graph and implements the ``AgentRunner`` protocol.
+
+    This is the production binding between the FastAPI layer and the LangGraph
+    graph. Tests inject a mock ``AgentRunner`` instead of this class to avoid
+    real I/O during testing.
+
+    Usage::
+
+        graph = create_graph(retriever=..., reranker=..., memory_service=...,
+                             llm_client=..., tools=[...])
+        runner = CompiledGraphRunner(graph)
+        report = await runner.run(query)
+    """
+
+    def __init__(self, graph: object) -> None:
+        """
+        Args:
+            graph: A compiled LangGraph graph produced by :func:`create_graph`.
+        """
+        self._graph = graph
+
+    async def run(self, query: ResearchQuery) -> ResearchReport:
+        """Execute the research graph for *query* and return the final report.
+
+        Args:
+            query: The research request containing the user's question and session ID.
+
+        Returns:
+            A :class:`~research_agent.models.research.ResearchReport` with a
+            summary and citations.
+
+        Raises:
+            RuntimeError: If the graph completes without producing a
+                ``final_report`` (should not happen under normal operation).
+        """
+        result: dict[str, object] = await self._graph.ainvoke(  # type: ignore[attr-defined]
+            {
+                "query": query.query,
+                "session_id": query.session_id,
+                "max_iterations": query.max_iterations,
+                "iteration_count": 0,
+                "search_results": [],
+                "memories": [],
+                "messages": [],
+                "tool_results": [],
+                "tool_calls_pending": [],
+                "final_report": None,
+            }
+        )
+        report: ResearchReport | None = result.get("final_report")  # type: ignore[assignment]
+        if report is None:
+            raise RuntimeError(
+                "Agent graph completed without producing a final report. "
+                "This is a bug — check the synthesis node."
+            )
+        return report

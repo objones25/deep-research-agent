@@ -28,8 +28,129 @@ from research_agent.api.dependencies import AgentRunner
 from research_agent.api.middleware import RequestIDMiddleware
 from research_agent.api.routes import health as health_module
 from research_agent.api.routes import research as research_module
-from research_agent.config import get_settings
+from research_agent.config import Settings, get_settings
 from research_agent.logging import configure_logging
+
+
+async def _build_agent_runner(settings: Settings) -> AgentRunner:
+    """Construct all production dependencies and return a wired ``AgentRunner``.
+
+    All imports are deferred into this function so that heavyweight libraries
+    (flashrank model download, qdrant client, etc.) are only loaded when the
+    app starts — not at import time during test collection.
+
+    Args:
+        settings: Validated application settings loaded from environment.
+
+    Returns:
+        A :class:`~research_agent.agent.graph.CompiledGraphRunner` ready to
+        handle research queries.
+    """
+    # Deferred imports — keep at function scope to avoid import-time side effects
+    from flashrank import Ranker
+    from huggingface_hub import AsyncInferenceClient
+    from mem0 import AsyncMemoryClient
+    from qdrant_client import AsyncQdrantClient
+
+    from research_agent.agent.graph import CompiledGraphRunner, create_graph
+    from research_agent.llm.huggingface import HuggingFaceClient
+    from research_agent.memory.mem0 import Mem0MemoryService
+    from research_agent.retrieval.bm25 import BM25Encoder
+    from research_agent.retrieval.collection import ensure_collection
+    from research_agent.retrieval.embedder import HuggingFaceEmbedder
+    from research_agent.retrieval.hybrid import HybridRetriever
+    from research_agent.retrieval.reranker import FlashRankReranker
+    from research_agent.tools.firecrawl import FirecrawlScrapeTool, FirecrawlSearchTool
+    from research_agent.tools.protocols import Tool
+
+    # ------------------------------------------------------------------
+    # Shared HuggingFace inference client (embedder + LLM reuse one client)
+    # ------------------------------------------------------------------
+    hf_client = AsyncInferenceClient(
+        provider="featherless-ai",
+        api_key=settings.hf_token.get_secret_value(),
+    )
+
+    # ------------------------------------------------------------------
+    # Vector store
+    # ------------------------------------------------------------------
+    qdrant_kwargs: dict[str, object] = {"url": settings.qdrant_url}
+    if settings.qdrant_api_key is not None:
+        qdrant_kwargs["api_key"] = settings.qdrant_api_key.get_secret_value()
+    qdrant_client = AsyncQdrantClient(**qdrant_kwargs)  # type: ignore[arg-type]
+
+    await ensure_collection(
+        client=qdrant_client,
+        name=settings.qdrant_collection,
+        vector_size=settings.qdrant_vector_size,
+    )
+
+    # ------------------------------------------------------------------
+    # Retrieval components
+    # ------------------------------------------------------------------
+    embedder = HuggingFaceEmbedder(
+        client=hf_client,
+        model=settings.embedding_model,
+        expected_dim=settings.qdrant_vector_size,
+    )
+
+    # Fit BM25 with a minimal bootstrap corpus so the encoder is ready.
+    # Real documents are indexed at query time via the retrieval pipeline.
+    bm25 = BM25Encoder()
+    bm25.fit(["research agent bootstrap corpus placeholder document"])
+
+    retriever = HybridRetriever(
+        client=qdrant_client,
+        collection=settings.qdrant_collection,
+        embedder=embedder,
+        bm25_encoder=bm25,
+    )
+
+    # FlashRank Ranker is synchronous; instantiation downloads the model on
+    # first call — this happens once at startup here, not per request.
+    import asyncio
+
+    ranker: Ranker = await asyncio.to_thread(Ranker)
+    reranker = FlashRankReranker(ranker=ranker, top_n=settings.retrieval_rerank_top_n)
+
+    # ------------------------------------------------------------------
+    # Memory service
+    # ------------------------------------------------------------------
+    memory_client = AsyncMemoryClient(api_key=settings.mem0_api_key.get_secret_value())
+    memory_service = Mem0MemoryService(client=memory_client)
+
+    # ------------------------------------------------------------------
+    # LLM client
+    # ------------------------------------------------------------------
+    llm_client = HuggingFaceClient(
+        client=hf_client,
+        model=settings.llm_model,
+        max_tokens=settings.llm_max_tokens,
+    )
+
+    # ------------------------------------------------------------------
+    # Firecrawl tools
+    # ------------------------------------------------------------------
+    # The Firecrawl remote MCP server authenticates via an API-key path segment.
+    mcp_url = (
+        f"{settings.firecrawl_mcp_url.rstrip('/')}/{settings.firecrawl_api_key.get_secret_value()}"
+    )
+    tools: list[Tool] = [
+        FirecrawlSearchTool(mcp_url=mcp_url),
+        FirecrawlScrapeTool(mcp_url=mcp_url),
+    ]
+
+    # ------------------------------------------------------------------
+    # Assemble graph and return runner
+    # ------------------------------------------------------------------
+    graph = create_graph(
+        retriever=retriever,
+        reranker=reranker,
+        memory_service=memory_service,
+        llm_client=llm_client,
+        tools=tools,
+    )
+    return CompiledGraphRunner(graph)
 
 
 @asynccontextmanager
@@ -44,6 +165,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     if settings.langchain_tracing_v2 and settings.langchain_api_key:
         os.environ["LANGCHAIN_TRACING_V2"] = "true"
         os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key.get_secret_value()
+
+    # Build the production agent runner when none was injected (i.e. not in tests)
+    if app.state.agent_runner is None:
+        app.state.agent_runner = await _build_agent_runner(settings)
 
     yield
 

@@ -20,6 +20,24 @@ def _required_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SECRET_KEY", "a" * 64)
 
 
+@pytest.fixture()
+def mock_runner() -> object:
+    """Minimal AgentRunner mock — prevents real dependency construction in lifespan."""
+    from unittest.mock import AsyncMock
+
+    from research_agent.api.dependencies import AgentRunner
+    from research_agent.models.research import ResearchReport
+
+    runner = AsyncMock(spec=AgentRunner)
+    runner.run.return_value = ResearchReport(
+        query="q",
+        summary="s",
+        citations=[],
+        session_id="sess",
+    )
+    return runner
+
+
 # ---------------------------------------------------------------------------
 # App factory basics
 # ---------------------------------------------------------------------------
@@ -63,27 +81,14 @@ class TestCreateApp:
 
 @pytest.mark.unit
 class TestAppLifespan:
-    def test_app_starts_up_cleanly(self) -> None:
+    def test_app_starts_up_cleanly(self, mock_runner: object) -> None:
         """TestClient context manager triggers lifespan startup/shutdown."""
-        app = create_app()
+        app = create_app(agent_runner=mock_runner)
         with TestClient(app) as client:
             # If startup raises, TestClient.__enter__ will propagate it
             assert client is not None
 
-    def test_app_stores_agent_runner_in_state(self) -> None:
-        from unittest.mock import AsyncMock
-
-        from research_agent.api.dependencies import AgentRunner
-        from research_agent.models.research import ResearchReport
-
-        mock_runner = AsyncMock(spec=AgentRunner)
-        mock_runner.run.return_value = ResearchReport(
-            query="q",
-            summary="s",
-            citations=[],
-            session_id="sess",
-        )
-
+    def test_app_stores_agent_runner_in_state(self, mock_runner: object) -> None:
         app = create_app(agent_runner=mock_runner)
         with TestClient(app):
             assert app.state.agent_runner is mock_runner
@@ -97,7 +102,7 @@ class TestAppLifespan:
 @pytest.mark.unit
 class TestLangSmithActivation:
     def test_langsmith_env_vars_set_when_tracing_enabled(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, mock_runner: object
     ) -> None:
         """LangSmith env vars are written at startup when tracing + key are configured."""
         fake_key = "lsv2_pt_" + "x" * 40  # noqa: S105 — test value, not a real secret
@@ -109,13 +114,13 @@ class TestLangSmithActivation:
         monkeypatch.setenv("FIRECRAWL_API_KEY", "fc_test_" + "x" * 30)
         monkeypatch.setenv("SECRET_KEY", "a" * 64)
 
-        app = create_app()
+        app = create_app(agent_runner=mock_runner)
         with TestClient(app):
             assert os.environ.get("LANGCHAIN_TRACING_V2") == "true"
             assert os.environ.get("LANGCHAIN_API_KEY") == fake_key
 
     def test_langsmith_env_vars_not_set_when_tracing_disabled(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, mock_runner: object
     ) -> None:
         """LANGCHAIN_TRACING_V2 is not written when tracing is off."""
         monkeypatch.delenv("LANGCHAIN_TRACING_V2", raising=False)
@@ -125,7 +130,7 @@ class TestLangSmithActivation:
         monkeypatch.setenv("FIRECRAWL_API_KEY", "fc_test_" + "x" * 30)
         monkeypatch.setenv("SECRET_KEY", "a" * 64)
 
-        app = create_app()
+        app = create_app(agent_runner=mock_runner)
         before = os.environ.get("LANGCHAIN_TRACING_V2")
         with TestClient(app):
             # Should still be whatever it was before lifespan ran
@@ -139,14 +144,16 @@ class TestLangSmithActivation:
 
 @pytest.mark.unit
 class TestGlobalExceptionHandler:
-    def test_unhandled_exception_returns_500_json(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_unhandled_exception_returns_500_json(
+        self, monkeypatch: pytest.MonkeyPatch, mock_runner: object
+    ) -> None:
         """Routes that raise unhandled exceptions produce a safe 500 JSON response."""
         monkeypatch.setenv("HF_TOKEN", "hf_test_" + "x" * 30)
         monkeypatch.setenv("MEM0_API_KEY", "m0_test_" + "x" * 30)
         monkeypatch.setenv("FIRECRAWL_API_KEY", "fc_test_" + "x" * 30)
         monkeypatch.setenv("SECRET_KEY", "a" * 64)
 
-        app = create_app()
+        app = create_app(agent_runner=mock_runner)
 
         @app.get("/boom")
         async def _explode() -> None:
@@ -159,7 +166,7 @@ class TestGlobalExceptionHandler:
         assert response.json()["detail"] == "An unexpected error occurred."
 
     def test_unhandled_exception_does_not_leak_traceback(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, mock_runner: object
     ) -> None:
         """500 response body does not contain internal exception details."""
         monkeypatch.setenv("HF_TOKEN", "hf_test_" + "x" * 30)
@@ -167,7 +174,7 @@ class TestGlobalExceptionHandler:
         monkeypatch.setenv("FIRECRAWL_API_KEY", "fc_test_" + "x" * 30)
         monkeypatch.setenv("SECRET_KEY", "a" * 64)
 
-        app = create_app()
+        app = create_app(agent_runner=mock_runner)
 
         @app.get("/secret_error")
         async def _secret_error() -> None:
