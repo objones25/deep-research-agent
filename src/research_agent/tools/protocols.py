@@ -2,13 +2,29 @@
 
 All external tool dependencies are hidden behind the Tool protocol.
 Business logic (agent nodes) must depend only on what is defined here.
+
+Value objects (ToolResult) live in ``research_agent.models.research`` because
+they flow up through the layer stack (tools → agent → API).
+Input DTOs (ToolInput, SearchInput, ScrapeInput) and ToolExecutionError stay
+here because they form the calling contract for the Tool protocol.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 from urllib.parse import urlparse
+
+from research_agent.models.research import ToolResult
+
+__all__ = [
+    "ScrapeInput",
+    "SearchInput",
+    "Tool",
+    "ToolExecutionError",
+    "ToolInput",
+    "ToolResult",
+]
 
 
 @dataclass(frozen=True)
@@ -19,20 +35,6 @@ class ToolInput:
     protocol's ``execute`` method accepts any ``ToolInput``, so adding a new
     tool never requires modifying this module — only a new subclass is needed.
     """
-
-
-@dataclass(frozen=True)
-class ToolResult:
-    """Immutable value object representing the outcome of a tool execution.
-
-    Either ``content`` or ``error`` is populated, never both.
-    ``is_error`` always reflects which field carries data.
-    """
-
-    is_error: bool
-    content: str | None = None
-    error: str | None = None
-    metadata: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

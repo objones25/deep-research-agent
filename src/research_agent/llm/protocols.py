@@ -1,36 +1,20 @@
-"""Core protocols and value objects for the LLM subsystem.
+"""Core protocols for the LLM subsystem.
 
 All external dependencies are hidden behind these protocols. Business logic
 (agent nodes, API routes) must depend only on what is defined here — never
 on concrete implementation classes.
+
+Value objects (Message) live in ``research_agent.models.research`` because
+they flow up through the layer stack (llm → agent).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-_VALID_ROLES: frozenset[str] = frozenset({"system", "user", "assistant", "tool"})
+from research_agent.models.research import Message
 
-
-@dataclass(frozen=True)
-class Message:
-    """An immutable value object representing a single chat message.
-
-    ``role`` is constrained to the four standard OpenAI-compatible roles.
-    ``"tool"`` carries tool-call results back to the model in multi-turn
-    tool-use conversations. Validated at construction time so callers fail
-    fast on bad data.
-    """
-
-    role: Literal["system", "user", "assistant", "tool"]
-    content: str
-
-    def __post_init__(self) -> None:
-        if self.role not in _VALID_ROLES:
-            raise ValueError(
-                f"Invalid role: {self.role!r}. Must be one of: system, user, assistant"
-            )
+__all__ = ["LLMClient", "Message"]
 
 
 @runtime_checkable

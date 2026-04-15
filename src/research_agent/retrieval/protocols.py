@@ -1,28 +1,20 @@
-"""Core protocols and value objects for the retrieval subsystem.
+"""Core protocols for the retrieval subsystem.
 
 All external dependencies are hidden behind these protocols. Business logic
 (agent nodes, API routes) must depend only on what is defined here — never
 on concrete implementation classes.
+
+Value objects (SearchResult) live in ``research_agent.models.research`` because
+they flow up through the layer stack (retrieval → agent → API).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+from research_agent.models.research import SearchResult
 
-@dataclass(frozen=True)
-class SearchResult:
-    """An immutable value object representing a single retrieved document.
-
-    ``score`` is always in [0, 1] after reranking; it may be a raw similarity
-    score (cosine, dot-product) prior to reranking.
-    """
-
-    content: str
-    url: str
-    score: float
-    metadata: dict[str, str]
+__all__ = ["Embedder", "Reranker", "Retriever", "SearchResult"]
 
 
 @runtime_checkable
