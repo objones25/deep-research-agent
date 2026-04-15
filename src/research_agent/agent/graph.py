@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
+from research_agent.agent.dependencies import AgentDependencies
 from research_agent.agent.nodes import (
     NodeFn,
     make_memory_node,
@@ -46,77 +47,35 @@ from research_agent.agent.nodes import (
     should_use_tools,
 )
 from research_agent.agent.state import AgentState
-from research_agent.llm.protocols import LLMClient
-from research_agent.memory.protocols import MemoryService
 from research_agent.models.research import ResearchQuery, ResearchReport
-from research_agent.retrieval.protocols import Reranker, Retriever
-from research_agent.tools.protocols import Tool
-
-# ---------------------------------------------------------------------------
-# Protocol validation
-# ---------------------------------------------------------------------------
-
-
-def _require(value: object, protocol: type, name: str) -> None:
-    """Raise ``TypeError`` if ``value`` does not satisfy ``protocol``."""
-    if not isinstance(value, protocol):
-        raise TypeError(
-            f"{name!r} must implement the {protocol.__name__} protocol, "
-            f"got {type(value).__name__!r} instead."
-        )
-
 
 # ---------------------------------------------------------------------------
 # Graph factory
 # ---------------------------------------------------------------------------
 
 
-def create_graph(
-    *,
-    retriever: Retriever,
-    reranker: Reranker,
-    memory_service: MemoryService,
-    llm_client: LLMClient,
-    tools: list[Tool],
-) -> object:
+def create_graph(deps: AgentDependencies) -> object:
     """Construct and compile the ReAct research agent graph.
 
     Parameters
     ----------
-    retriever:
-        Hybrid retrieval implementation satisfying ``Retriever``.
-    reranker:
-        Reranking implementation satisfying ``Reranker``.
-    memory_service:
-        Memory backend satisfying ``MemoryService``.
-    llm_client:
-        LLM client satisfying ``LLMClient``.
-    tools:
-        List of available tools, each satisfying ``Tool``.
+    deps:
+        All protocol-typed agent components, pre-validated at construction
+        time by :class:`~research_agent.agent.dependencies.AgentDependencies`.
 
     Returns
     -------
     CompiledGraph
         A LangGraph ``CompiledGraph`` ready for ``ainvoke`` / ``astream``.
-
-    Raises
-    ------
-    TypeError
-        If any dependency does not satisfy its expected protocol.
     """
-    _require(retriever, Retriever, "retriever")
-    _require(reranker, Reranker, "reranker")
-    _require(memory_service, MemoryService, "memory_service")
-    _require(llm_client, LLMClient, "llm_client")
-
     # ------------------------------------------------------------------
     # Build node functions by closing over injected dependencies
     # ------------------------------------------------------------------
-    memory_node: NodeFn = make_memory_node(memory_service)
-    retrieval_node: NodeFn = make_retrieval_node(retriever, reranker)
-    reason_node: NodeFn = make_reason_node(llm_client)
-    tool_node: NodeFn = make_tool_node(tools)
-    synthesis_node: NodeFn = make_synthesis_node(llm_client, memory_service)
+    memory_node: NodeFn = make_memory_node(deps.memory_service)
+    retrieval_node: NodeFn = make_retrieval_node(deps.retriever, deps.reranker)
+    reason_node: NodeFn = make_reason_node(deps.llm_client)
+    tool_node: NodeFn = make_tool_node(deps.tools_as_list())
+    synthesis_node: NodeFn = make_synthesis_node(deps.llm_client, deps.memory_service)
 
     # ------------------------------------------------------------------
     # Assemble the StateGraph
@@ -181,9 +140,9 @@ class CompiledGraphRunner:
 
     Usage::
 
-        graph = create_graph(retriever=..., reranker=..., memory_service=...,
-                             llm_client=..., tools=[...])
-        runner = CompiledGraphRunner(graph)
+        deps = AgentDependencies(retriever=..., reranker=..., memory_service=...,
+                                 llm_client=..., tools=(...,))
+        runner = CompiledGraphRunner(create_graph(deps))
         report = await runner.run(query)
     """
 

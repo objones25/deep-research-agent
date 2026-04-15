@@ -68,3 +68,19 @@ class FlashRankReranker:
             latency_ms=round((time.perf_counter() - t0) * 1000, 1),
         )
         return output
+
+
+# ---------------------------------------------------------------------------
+# Registry factory
+# ---------------------------------------------------------------------------
+
+from research_agent.config import Settings  # noqa: E402
+from research_agent.retrieval.registry import reranker_registry  # noqa: E402
+
+
+@reranker_registry.register("flashrank")
+async def _build_flashrank_reranker(settings: Settings) -> FlashRankReranker:
+    import flashrank
+
+    ranker = await asyncio.to_thread(flashrank.Ranker)
+    return FlashRankReranker(ranker=ranker, top_n=settings.retrieval_rerank_top_n)

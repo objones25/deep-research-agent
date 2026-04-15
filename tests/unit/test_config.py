@@ -7,6 +7,8 @@ fixture in conftest.py.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from research_agent.config import Settings, get_settings
@@ -25,7 +27,7 @@ _VALID_ENV: dict[str, str] = {
 }
 
 
-def _make_settings(overrides: dict[str, str] | None = None, **kwargs: str) -> Settings:
+def _make_settings(overrides: dict[str, str] | None = None, **kwargs: Any) -> Settings:
     """Construct a Settings instance from _VALID_ENV, applying any overrides.
 
     ``_env_file=None`` prevents pydantic-settings from loading the project's
@@ -347,6 +349,110 @@ class TestLogLevelValidation:
     def test_valid_log_levels_accepted(self, valid: str) -> None:
         settings = _make_settings(log_level=valid)
         assert settings.log_level == valid
+
+
+# ---------------------------------------------------------------------------
+# Computed properties
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSettingsComputedProperties:
+    def test_firecrawl_mcp_endpoint_embeds_api_key(self) -> None:
+        settings = _make_settings()
+        assert "firecrawl-key-abc123" in settings.firecrawl_mcp_endpoint
+
+    def test_firecrawl_mcp_endpoint_ends_with_v2_mcp(self) -> None:
+        settings = _make_settings()
+        assert settings.firecrawl_mcp_endpoint.endswith("/v2/mcp")
+
+    def test_firecrawl_mcp_endpoint_strips_trailing_slash_from_base(self) -> None:
+        settings = _make_settings(firecrawl_mcp_url="https://mcp.firecrawl.dev/")
+        endpoint = settings.firecrawl_mcp_endpoint
+        assert "//" not in endpoint.replace("https://", "").replace("http://", "")
+
+    def test_firecrawl_mcp_endpoint_full_url_structure(self) -> None:
+        settings = _make_settings(firecrawl_mcp_url="https://mcp.firecrawl.dev")
+        expected = "https://mcp.firecrawl.dev/firecrawl-key-abc123/v2/mcp"
+        assert settings.firecrawl_mcp_endpoint == expected
+
+    def test_qdrant_connect_kwargs_without_api_key(self) -> None:
+        env = {k: v for k, v in _VALID_ENV.items() if k != "QDRANT_API_KEY"}
+        settings = Settings(_env_file=None, **{k.lower(): v for k, v in env.items()})
+        assert settings.qdrant_connect_kwargs == {"url": "http://localhost:6333"}
+
+    def test_qdrant_connect_kwargs_with_api_key_includes_url(self) -> None:
+        settings = _make_settings()
+        assert settings.qdrant_connect_kwargs["url"] == "http://localhost:6333"
+
+    def test_qdrant_connect_kwargs_with_api_key_includes_api_key(self) -> None:
+        settings = _make_settings()
+        assert settings.qdrant_connect_kwargs["api_key"] == "qdrant-key-abc123"
+
+    def test_qdrant_connect_kwargs_custom_url(self) -> None:
+        settings = _make_settings(qdrant_url="https://cloud.qdrant.io")
+        assert settings.qdrant_connect_kwargs["url"] == "https://cloud.qdrant.io"
+
+    def test_qdrant_connect_kwargs_without_api_key_has_no_api_key_entry(self) -> None:
+        env = {k: v for k, v in _VALID_ENV.items() if k != "QDRANT_API_KEY"}
+        settings = Settings(_env_file=None, **{k.lower(): v for k, v in env.items()})
+        assert "api_key" not in settings.qdrant_connect_kwargs
+
+
+# ---------------------------------------------------------------------------
+# Provider selector fields
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSettingsProviderFields:
+    def test_default_llm_provider(self) -> None:
+        settings = _make_settings()
+        assert settings.llm_provider == "huggingface"
+
+    def test_custom_llm_provider(self) -> None:
+        settings = _make_settings(llm_provider="openai")
+        assert settings.llm_provider == "openai"
+
+    def test_default_memory_provider(self) -> None:
+        settings = _make_settings()
+        assert settings.memory_provider == "mem0"
+
+    def test_custom_memory_provider(self) -> None:
+        settings = _make_settings(memory_provider="zep")
+        assert settings.memory_provider == "zep"
+
+    def test_default_retriever_type(self) -> None:
+        settings = _make_settings()
+        assert settings.retriever_type == "hybrid"
+
+    def test_custom_retriever_type(self) -> None:
+        settings = _make_settings(retriever_type="dense_only")
+        assert settings.retriever_type == "dense_only"
+
+    def test_default_reranker_type(self) -> None:
+        settings = _make_settings()
+        assert settings.reranker_type == "flashrank"
+
+    def test_custom_reranker_type(self) -> None:
+        settings = _make_settings(reranker_type="cross_encoder")
+        assert settings.reranker_type == "cross_encoder"
+
+    def test_default_enabled_tools(self) -> None:
+        settings = _make_settings()
+        assert settings.enabled_tools == ["firecrawl"]
+
+    def test_custom_enabled_tools_single(self) -> None:
+        settings = _make_settings(enabled_tools=["web_search"])
+        assert settings.enabled_tools == ["web_search"]
+
+    def test_custom_enabled_tools_multiple(self) -> None:
+        settings = _make_settings(enabled_tools=["firecrawl", "web_search"])
+        assert settings.enabled_tools == ["firecrawl", "web_search"]
+
+    def test_enabled_tools_empty_list(self) -> None:
+        settings = _make_settings(enabled_tools=[])
+        assert settings.enabled_tools == []
 
 
 # ---------------------------------------------------------------------------

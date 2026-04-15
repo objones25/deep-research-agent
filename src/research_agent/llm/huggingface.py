@@ -100,3 +100,26 @@ class HuggingFaceClient:
             response_len=len(content),
         )
         return content
+
+
+# ---------------------------------------------------------------------------
+# Registry factory
+# ---------------------------------------------------------------------------
+
+from research_agent.config import Settings  # noqa: E402
+from research_agent.llm.registry import llm_registry  # noqa: E402
+
+
+@llm_registry.register("huggingface")
+async def _build_huggingface(settings: Settings) -> HuggingFaceClient:
+    import huggingface_hub
+
+    hf_client = huggingface_hub.AsyncInferenceClient(
+        provider="featherless-ai",
+        api_key=settings.hf_token.get_secret_value(),
+    )
+    return HuggingFaceClient(
+        client=hf_client,
+        model=settings.llm_model,
+        max_tokens=settings.llm_max_tokens,
+    )

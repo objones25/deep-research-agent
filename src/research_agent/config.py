@@ -15,7 +15,7 @@ Usage::
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -144,6 +144,34 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
+    # Provider selectors (resolved by each subsystem's Registry)
+    # ------------------------------------------------------------------
+
+    llm_provider: str = Field(
+        default="huggingface",
+        description="Key of the LLM provider to instantiate via the llm registry.",
+    )
+    memory_provider: str = Field(
+        default="mem0",
+        description="Key of the memory provider to instantiate via the memory registry.",
+    )
+    retriever_type: str = Field(
+        default="hybrid",
+        description="Key of the retriever implementation to instantiate via the retrieval registry.",
+    )
+    reranker_type: str = Field(
+        default="flashrank",
+        description="Key of the reranker implementation to instantiate via the retrieval registry.",
+    )
+    enabled_tools: list[str] = Field(
+        default_factory=lambda: ["firecrawl"],
+        description=(
+            "List of tool keys to load via the tools registry. "
+            "Set as a JSON array in the environment: ENABLED_TOOLS='[\"firecrawl\"]'."
+        ),
+    )
+
+    # ------------------------------------------------------------------
     # Retrieval
     # ------------------------------------------------------------------
 
@@ -202,6 +230,34 @@ class Settings(BaseSettings):
             "Obtain from https://smith.langchain.com/settings."
         ),
     )
+
+    # ------------------------------------------------------------------
+    # Computed connection helpers
+    # ------------------------------------------------------------------
+
+    @property
+    def firecrawl_mcp_endpoint(self) -> str:
+        """Full Firecrawl v2 Streamable HTTP MCP endpoint URL with embedded API key.
+
+        The Firecrawl remote MCP server authenticates via an API-key path
+        segment; the v2 Streamable HTTP endpoint is at ``/<api_key>/v2/mcp``.
+        """
+        return (
+            f"{self.firecrawl_mcp_url.rstrip('/')}"
+            f"/{self.firecrawl_api_key.get_secret_value()}/v2/mcp"
+        )
+
+    @property
+    def qdrant_connect_kwargs(self) -> dict[str, Any]:
+        """Keyword arguments for constructing an ``AsyncQdrantClient``.
+
+        Omits ``api_key`` for unauthenticated local instances where
+        ``qdrant_api_key`` is ``None``.
+        """
+        kwargs: dict[str, Any] = {"url": self.qdrant_url}
+        if self.qdrant_api_key is not None:
+            kwargs["api_key"] = self.qdrant_api_key.get_secret_value()
+        return kwargs
 
     # ------------------------------------------------------------------
     # Validators

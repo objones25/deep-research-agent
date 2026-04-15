@@ -208,3 +208,20 @@ class FirecrawlScrapeTool(_FirecrawlBaseTool):
         if result.isError:
             return ToolResult(is_error=True, error=_extract_text(result))
         return ToolResult(is_error=False, content=_extract_text(result))
+
+
+# ---------------------------------------------------------------------------
+# Registry factory
+# ---------------------------------------------------------------------------
+
+from research_agent.config import Settings  # noqa: E402
+from research_agent.tools.protocols import Tool  # noqa: E402
+from research_agent.tools.registry import tools_registry  # noqa: E402
+
+
+@tools_registry.register("firecrawl")
+async def _build_firecrawl(settings: Settings) -> tuple[Tool, ...]:
+    return (
+        FirecrawlSearchTool(mcp_url=settings.firecrawl_mcp_endpoint),
+        FirecrawlScrapeTool(mcp_url=settings.firecrawl_mcp_endpoint),
+    )

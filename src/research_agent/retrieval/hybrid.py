@@ -107,3 +107,43 @@ class HybridRetriever:
             score=float(point.score),
             metadata={k: str(v) for k, v in payload.get("metadata", {}).items()},
         )
+
+
+# ---------------------------------------------------------------------------
+# Registry factory
+# ---------------------------------------------------------------------------
+
+from research_agent.config import Settings  # noqa: E402
+from research_agent.retrieval.registry import retriever_registry  # noqa: E402
+
+
+@retriever_registry.register("hybrid")
+async def _build_hybrid_retriever(settings: Settings) -> HybridRetriever:
+    import huggingface_hub
+    import qdrant_client
+
+    from research_agent.retrieval.bm25 import BM25Encoder as _BM25Encoder
+    from research_agent.retrieval.collection import ensure_collection as _ensure_collection
+    from research_agent.retrieval.embedder import HuggingFaceEmbedder as _HuggingFaceEmbedder
+
+    hf_client = huggingface_hub.AsyncInferenceClient(
+        api_key=settings.hf_token.get_secret_value(),
+    )
+    qdrant = qdrant_client.AsyncQdrantClient(**settings.qdrant_connect_kwargs)
+    embedder = _HuggingFaceEmbedder(
+        client=hf_client,
+        model=settings.embedding_model,
+        expected_dim=settings.qdrant_vector_size,
+    )
+    bm25 = _BM25Encoder()
+    await _ensure_collection(
+        client=qdrant,
+        name=settings.qdrant_collection,
+        vector_size=settings.qdrant_vector_size,
+    )
+    return HybridRetriever(
+        client=qdrant,
+        collection=settings.qdrant_collection,
+        embedder=embedder,
+        bm25_encoder=bm25,
+    )

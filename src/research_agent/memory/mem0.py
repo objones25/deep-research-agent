@@ -84,3 +84,19 @@ class Mem0MemoryService:
             hit=len(memories) > 0,
         )
         return memories
+
+
+# ---------------------------------------------------------------------------
+# Registry factory
+# ---------------------------------------------------------------------------
+
+from research_agent.config import Settings  # noqa: E402
+from research_agent.memory.registry import memory_registry  # noqa: E402
+
+
+@memory_registry.register("mem0")
+async def _build_mem0(settings: Settings) -> Mem0MemoryService:
+    import mem0
+
+    client = mem0.AsyncMemoryClient(api_key=settings.mem0_api_key.get_secret_value())
+    return Mem0MemoryService(client=client)

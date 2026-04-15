@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from research_agent.agent.dependencies import AgentDependencies
 from research_agent.agent.graph import CompiledGraphRunner, create_graph
 from research_agent.models.research import ResearchQuery, ResearchReport, SearchResult
 
@@ -52,6 +53,19 @@ def _mock_tool(name: str = "firecrawl_search") -> MagicMock:
     return tool
 
 
+def _make_deps(**overrides: object) -> AgentDependencies:
+    """Return a valid AgentDependencies, optionally overriding specific fields."""
+    defaults: dict[str, object] = {
+        "llm_client": _mock_llm(),
+        "retriever": _mock_retriever(),
+        "reranker": _mock_reranker(),
+        "memory_service": _mock_memory(),
+        "tools": (),
+    }
+    defaults.update(overrides)
+    return AgentDependencies(**defaults)  # type: ignore[arg-type]
+
+
 # ---------------------------------------------------------------------------
 # create_graph
 # ---------------------------------------------------------------------------
@@ -60,85 +74,61 @@ def _mock_tool(name: str = "firecrawl_search") -> MagicMock:
 @pytest.mark.unit
 class TestCreateGraph:
     def test_returns_compiled_graph(self) -> None:
-        graph = create_graph(
-            retriever=_mock_retriever(),
-            reranker=_mock_reranker(),
-            memory_service=_mock_memory(),
-            llm_client=_mock_llm(),
-            tools=[],
-        )
+        graph = create_graph(_make_deps())
         # LangGraph compiled graphs expose ainvoke
         assert hasattr(graph, "ainvoke")
 
     def test_returns_graph_with_astream(self) -> None:
-        graph = create_graph(
-            retriever=_mock_retriever(),
-            reranker=_mock_reranker(),
-            memory_service=_mock_memory(),
-            llm_client=_mock_llm(),
-            tools=[],
-        )
+        graph = create_graph(_make_deps())
         assert hasattr(graph, "astream")
 
-    def test_accepts_empty_tools_list(self) -> None:
-        graph = create_graph(
-            retriever=_mock_retriever(),
-            reranker=_mock_reranker(),
-            memory_service=_mock_memory(),
-            llm_client=_mock_llm(),
-            tools=[],
-        )
+    def test_accepts_empty_tools_tuple(self) -> None:
+        graph = create_graph(_make_deps(tools=()))
         assert graph is not None
 
     def test_accepts_multiple_tools(self) -> None:
-        tools = [_mock_tool("firecrawl_search"), _mock_tool("firecrawl_scrape")]
-        graph = create_graph(
-            retriever=_mock_retriever(),
-            reranker=_mock_reranker(),
-            memory_service=_mock_memory(),
-            llm_client=_mock_llm(),
-            tools=tools,
-        )
+        tools = (_mock_tool("firecrawl_search"), _mock_tool("firecrawl_scrape"))
+        graph = create_graph(_make_deps(tools=tools))
         assert graph is not None
 
     def test_invalid_retriever_raises(self) -> None:
         with pytest.raises(TypeError, match="retriever"):
-            create_graph(
-                retriever="not_a_retriever",  # type: ignore[arg-type]
+            AgentDependencies(
+                retriever=object(),  # type: ignore[arg-type]
                 reranker=_mock_reranker(),
                 memory_service=_mock_memory(),
                 llm_client=_mock_llm(),
-                tools=[],
+                tools=(),
             )
 
     def test_invalid_reranker_raises(self) -> None:
         with pytest.raises(TypeError, match="reranker"):
-            create_graph(
+            AgentDependencies(
                 retriever=_mock_retriever(),
-                reranker="not_a_reranker",  # type: ignore[arg-type]
+                reranker=object(),  # type: ignore[arg-type]
                 memory_service=_mock_memory(),
                 llm_client=_mock_llm(),
-                tools=[],
+                tools=(),
             )
 
     def test_invalid_memory_service_raises(self) -> None:
         with pytest.raises(TypeError, match="memory_service"):
-            create_graph(
+            AgentDependencies(
                 retriever=_mock_retriever(),
                 reranker=_mock_reranker(),
-                memory_service="not_memory",  # type: ignore[arg-type]
+                memory_service=object(),  # type: ignore[arg-type]
                 llm_client=_mock_llm(),
-                tools=[],
+                tools=(),
             )
 
     def test_invalid_llm_client_raises(self) -> None:
         with pytest.raises(TypeError, match="llm_client"):
-            create_graph(
+            AgentDependencies(
                 retriever=_mock_retriever(),
                 reranker=_mock_reranker(),
                 memory_service=_mock_memory(),
-                llm_client="not_llm",  # type: ignore[arg-type]
-                tools=[],
+                llm_client=object(),  # type: ignore[arg-type]
+                tools=(),
             )
 
 
@@ -152,11 +142,9 @@ class TestGraphExecution:
     @pytest.mark.asyncio
     async def test_ainvoke_returns_final_report(self) -> None:
         graph = create_graph(
-            retriever=_mock_retriever(),
-            reranker=_mock_reranker(),
-            memory_service=_mock_memory(),
-            llm_client=_mock_llm("<final_answer>Quantum entanglement answer.</final_answer>"),
-            tools=[],
+            _make_deps(
+                llm_client=_mock_llm("<final_answer>Quantum entanglement answer.</final_answer>")
+            )
         )
         query = ResearchQuery(query="What is quantum entanglement?", session_id="sess-1")
         result = await graph.ainvoke(
@@ -180,13 +168,7 @@ class TestGraphExecution:
     @pytest.mark.asyncio
     async def test_ainvoke_calls_memory_search(self) -> None:
         memory = _mock_memory()
-        graph = create_graph(
-            retriever=_mock_retriever(),
-            reranker=_mock_reranker(),
-            memory_service=memory,
-            llm_client=_mock_llm(),
-            tools=[],
-        )
+        graph = create_graph(_make_deps(memory_service=memory))
         await graph.ainvoke(
             {
                 "query": "test query",
@@ -206,13 +188,7 @@ class TestGraphExecution:
     @pytest.mark.asyncio
     async def test_ainvoke_calls_llm(self) -> None:
         llm = _mock_llm()
-        graph = create_graph(
-            retriever=_mock_retriever(),
-            reranker=_mock_reranker(),
-            memory_service=_mock_memory(),
-            llm_client=llm,
-            tools=[],
-        )
+        graph = create_graph(_make_deps(llm_client=llm))
         await graph.ainvoke(
             {
                 "query": "test",
@@ -233,13 +209,7 @@ class TestGraphExecution:
     async def test_ainvoke_stops_at_max_iterations(self) -> None:
         """When no final_answer is produced, the graph stops at max_iterations."""
         llm = _mock_llm("Thinking... no answer yet.")  # no <final_answer>
-        graph = create_graph(
-            retriever=_mock_retriever(),
-            reranker=_mock_reranker(),
-            memory_service=_mock_memory(),
-            llm_client=llm,
-            tools=[],
-        )
+        graph = create_graph(_make_deps(llm_client=llm))
         result = await graph.ainvoke(
             {
                 "query": "hard question",
@@ -260,13 +230,7 @@ class TestGraphExecution:
     @pytest.mark.asyncio
     async def test_ainvoke_saves_to_memory(self) -> None:
         memory = _mock_memory()
-        graph = create_graph(
-            retriever=_mock_retriever(),
-            reranker=_mock_reranker(),
-            memory_service=memory,
-            llm_client=_mock_llm(),
-            tools=[],
-        )
+        graph = create_graph(_make_deps(memory_service=memory))
         await graph.ainvoke(
             {
                 "query": "test",
@@ -294,11 +258,7 @@ class TestCompiledGraphRunner:
     @pytest.mark.asyncio
     async def test_run_returns_research_report(self) -> None:
         graph = create_graph(
-            retriever=_mock_retriever(),
-            reranker=_mock_reranker(),
-            memory_service=_mock_memory(),
-            llm_client=_mock_llm("<final_answer>Runner answer.</final_answer>"),
-            tools=[],
+            _make_deps(llm_client=_mock_llm("<final_answer>Runner answer.</final_answer>"))
         )
         runner = CompiledGraphRunner(graph)
         query = ResearchQuery(query="What is the speed of light?", session_id="sess-r1")
@@ -310,11 +270,7 @@ class TestCompiledGraphRunner:
     @pytest.mark.asyncio
     async def test_run_propagates_query_fields(self) -> None:
         graph = create_graph(
-            retriever=_mock_retriever(),
-            reranker=_mock_reranker(),
-            memory_service=_mock_memory(),
-            llm_client=_mock_llm("<final_answer>Propagated.</final_answer>"),
-            tools=[],
+            _make_deps(llm_client=_mock_llm("<final_answer>Propagated.</final_answer>"))
         )
         runner = CompiledGraphRunner(graph)
         query = ResearchQuery(query="test propagation", session_id="sess-prop")
@@ -337,11 +293,7 @@ class TestCompiledGraphRunner:
     @pytest.mark.asyncio
     async def test_multiple_runs_are_independent(self) -> None:
         graph = create_graph(
-            retriever=_mock_retriever(),
-            reranker=_mock_reranker(),
-            memory_service=_mock_memory(),
-            llm_client=_mock_llm("<final_answer>Independent.</final_answer>"),
-            tools=[],
+            _make_deps(llm_client=_mock_llm("<final_answer>Independent.</final_answer>"))
         )
         runner = CompiledGraphRunner(graph)
         q1 = ResearchQuery(query="query one", session_id="s1")
