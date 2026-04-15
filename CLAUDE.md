@@ -275,7 +275,10 @@ No `os.getenv()` calls outside of that file. No hardcoded values anywhere.
 
 Required variables (see `.env.example` for full list):
 
-- `HF_TOKEN` — HuggingFace token; used by `InferenceClient(provider="featherless-ai")`
+- `HF_TOKEN` — HuggingFace token; used by TWO separate `AsyncInferenceClient` instances:
+  - One with `provider="featherless-ai"` for LLM inference (Qwen3-32B)
+  - One without provider for embeddings (standard HF Inference API supports feature-extraction)
+  - This separation exists because Featherless AI doesn't support the feature-extraction task
 - `QDRANT_URL`, `QDRANT_API_KEY`
 - `MEM0_API_KEY`
 - `FIRECRAWL_API_KEY`

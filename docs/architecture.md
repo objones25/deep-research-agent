@@ -141,11 +141,12 @@ class LLMClient(Protocol):
 
 **Implementation**: `HuggingFaceClient`
 
-- Wraps `AsyncInferenceClient` (HuggingFace Hub, Featherless AI provider)
+- Wraps `AsyncInferenceClient(provider="featherless-ai")` for LLM inference
 - Converts `Message` objects to `{"role": ..., "content": ...}` dicts
 - Calls `client.chat.completions.create(model, messages, max_tokens)`
 - Validates response content is not None
 - Logs latency and response length
+- Receives the dedicated LLM-only `AsyncInferenceClient` created at app startup
 
 ---
 
@@ -282,10 +283,12 @@ class Embedder(Protocol):
 
 **Implementation**: `HuggingFaceEmbedder`
 
-- Calls `AsyncInferenceClient.feature_extraction(text, model=model_id)`
+- Wraps `AsyncInferenceClient` (standard HF Inference API, no provider kwarg)
+- Calls `client.feature_extraction(text, model=model_id)` to generate dense embeddings
 - Handles multiple output shapes from HF API (pooled, batch, token-level)
-- Validates output dimension matches expected size
+- Validates output dimension matches `expected_dim` (configured as `QDRANT_VECTOR_SIZE`)
 - Returns normalized 1-D float list
+- Receives the dedicated embeddings-only `AsyncInferenceClient` created at app startup
 
 ---
 
@@ -566,6 +569,19 @@ def get_settings() -> Settings:
 - `LLM_MODEL` ← Model ID (default: `Qwen/Qwen3-32B`)
 - `LLM_MAX_TOKENS` ← Max generation length (default: `4096`)
 
+**Note**: Two separate `AsyncInferenceClient` instances are created at startup:
+
+1. **LLM client** — `AsyncInferenceClient(provider="featherless-ai", api_key=HF_TOKEN)`
+   - Routes inference to Qwen3-32B via Featherless AI
+   - Used by `HuggingFaceClient` for agent reasoning and synthesis
+
+2. **Embeddings client** — `AsyncInferenceClient(api_key=HF_TOKEN)` (no provider)
+   - Uses standard HuggingFace Inference API
+   - Supports feature-extraction task for dense embeddings
+   - Used by `HuggingFaceEmbedder` for query and document encoding
+
+This separation exists because Featherless AI (a Qwen3 specialist provider) does not support the feature-extraction task required for generating embeddings. Both clients share the same `HF_TOKEN` but route to different endpoints.
+
 #### Vector Store (Qdrant)
 
 - `QDRANT_URL` ← Server URL (default: `http://localhost:6333`)
@@ -585,6 +601,16 @@ def get_settings() -> Settings:
 #### Web Tools (Firecrawl)
 
 - `FIRECRAWL_API_KEY` ← Firecrawl API key (required)
+- `FIRECRAWL_MCP_URL` ← Base URL of Firecrawl MCP server (default: `https://mcp.firecrawl.dev`)
+
+**Note**: At startup, the full MCP URL is constructed as:
+```
+{FIRECRAWL_MCP_URL.rstrip('/')}/{FIRECRAWL_API_KEY}/v2/mcp
+```
+
+For example: `https://mcp.firecrawl.dev/your-api-key/v2/mcp`
+
+This URL points to the v2 Streamable HTTP endpoint of the Firecrawl remote MCP server.
 
 #### FastAPI / Auth
 
