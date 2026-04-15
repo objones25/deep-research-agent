@@ -26,9 +26,13 @@ _VALID_ENV: dict[str, str] = {
 
 
 def _make_settings(overrides: dict[str, str] | None = None, **kwargs: str) -> Settings:
-    """Construct a Settings instance from _VALID_ENV, applying any overrides."""
+    """Construct a Settings instance from _VALID_ENV, applying any overrides.
+
+    ``_env_file=None`` prevents pydantic-settings from loading the project's
+    real ``.env`` file so tests remain isolated from developer secrets.
+    """
     env = {**_VALID_ENV, **(overrides or {}), **kwargs}
-    return Settings(**{k.lower(): v for k, v in env.items()})
+    return Settings(_env_file=None, **{k.lower(): v for k, v in env.items()})
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +64,11 @@ class TestSettingsDefaults:
 
     def test_default_qdrant_vector_size(self) -> None:
         settings = _make_settings()
-        assert settings.qdrant_vector_size == 1536
+        assert settings.qdrant_vector_size == 1024
+
+    def test_default_embedding_model(self) -> None:
+        settings = _make_settings()
+        assert settings.embedding_model == "BAAI/bge-large-en-v1.5"
 
     def test_default_mem0_retention_days(self) -> None:
         settings = _make_settings()
@@ -92,7 +100,7 @@ class TestSettingsDefaults:
 
     def test_qdrant_api_key_optional_defaults_to_none(self) -> None:
         env = {k: v for k, v in _VALID_ENV.items() if k != "QDRANT_API_KEY"}
-        settings = Settings(**{k.lower(): v for k, v in env.items()})
+        settings = Settings(_env_file=None, **{k.lower(): v for k, v in env.items()})
         assert settings.qdrant_api_key is None
 
 
@@ -109,6 +117,10 @@ class TestSettingsOverrides:
     def test_custom_qdrant_collection(self) -> None:
         settings = _make_settings(qdrant_collection="my_collection")
         assert settings.qdrant_collection == "my_collection"
+
+    def test_custom_embedding_model(self) -> None:
+        settings = _make_settings(embedding_model="sentence-transformers/all-MiniLM-L6-v2")
+        assert settings.embedding_model == "sentence-transformers/all-MiniLM-L6-v2"
 
     def test_custom_retrieval_top_k(self) -> None:
         settings = _make_settings(retrieval_top_k="50")
@@ -177,7 +189,7 @@ class TestMissingRequiredSecrets:
     def test_missing_required_secret_raises(self, missing_field: str) -> None:
         env = {k: v for k, v in _VALID_ENV.items() if k != missing_field}
         with pytest.raises((ValueError, Exception)):
-            Settings(**{k.lower(): v for k, v in env.items()})
+            Settings(_env_file=None, **{k.lower(): v for k, v in env.items()})
 
     def test_empty_hf_token_raises(self) -> None:
         with pytest.raises(ValueError, match="hf_token"):
@@ -318,9 +330,7 @@ class TestGetSettingsCache:
         second = get_settings()
         assert first is second
 
-    def test_cache_cleared_between_tests_by_fixture(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_cache_cleared_between_tests_by_fixture(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Demonstrates that the autouse fixture in conftest clears the cache."""
         for k, v in _VALID_ENV.items():
             monkeypatch.setenv(k, v)

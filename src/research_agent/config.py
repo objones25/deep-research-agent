@@ -77,9 +77,21 @@ class Settings(BaseSettings):
         description="Name of the Qdrant collection used to store research chunks.",
     )
     qdrant_vector_size: int = Field(
-        default=1536,
+        default=1024,
         gt=0,
         description="Embedding vector dimension — must match the embedding model output.",
+    )
+
+    # ------------------------------------------------------------------
+    # Retrieval — Embedding
+    # ------------------------------------------------------------------
+
+    embedding_model: str = Field(
+        default="BAAI/bge-large-en-v1.5",
+        description=(
+            "HuggingFace model ID used for dense embedding generation. "
+            "Must produce vectors of length matching ``qdrant_vector_size``."
+        ),
     )
 
     # ------------------------------------------------------------------
@@ -111,7 +123,7 @@ class Settings(BaseSettings):
         description=(
             "Secret key used to sign JWT tokens. "
             "Must be at least 32 bytes of random data. "
-            "Generate with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            'Generate with: python -c "import secrets; print(secrets.token_hex(32))"'
         ),
     )
     jwt_algorithm: str = Field(
@@ -157,7 +169,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
 
     @model_validator(mode="after")
-    def _validate_secrets(self) -> "Settings":
+    def _validate_secrets(self) -> Settings:
         """Reject missing or placeholder secret values at startup."""
         _PLACEHOLDERS = frozenset(
             {
@@ -197,7 +209,7 @@ class Settings(BaseSettings):
         if len(_secret_key.encode()) < 32:
             raise ValueError(
                 "SECRET_KEY must be at least 32 bytes. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
             )
 
         return self

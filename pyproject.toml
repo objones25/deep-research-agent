@@ -16,6 +16,8 @@ dependencies = [
     "qdrant-client>=1.12",
     # BM25 sparse retrieval
     "rank-bm25>=0.2",
+    # Numerical arrays (used by HuggingFaceEmbedder for output pooling)
+    "numpy>=1.26",
     # Reranking
     "flashrank>=0.2",
     # Memory
@@ -91,6 +93,7 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 exclude = ["tests/"]
+plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = [
