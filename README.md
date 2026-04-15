@@ -43,7 +43,7 @@ The Deep Research Agent is a production-ready system that orchestrates a ReAct (
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/deep-research-agent.git
+git clone https://github.com/objones25/deep-research-agent.git
 cd deep-research-agent
 
 # Install dependencies
