@@ -13,7 +13,7 @@ Output shape normalisation handles the three forms returned by the HF API:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from huggingface_hub import AsyncInferenceClient
@@ -64,7 +64,7 @@ class HuggingFaceEmbedder:
                 f"Check that EMBEDDING_MODEL and QDRANT_VECTOR_SIZE are consistent."
             )
 
-        return embedding.tolist()
+        return cast(list[float], embedding.tolist())
 
     # ------------------------------------------------------------------
     # Internal helpers

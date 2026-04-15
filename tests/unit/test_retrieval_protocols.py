@@ -1,4 +1,5 @@
 """Tests for retrieval protocols and SearchResult value object."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -45,7 +46,9 @@ class TestSearchResult:
         assert original.score == pytest.approx(0.9)  # original unchanged
 
     def test_replace_preserves_unchanged_fields(self) -> None:
-        original = SearchResult(content="original", url="http://x.com", score=0.9, metadata={"k": "v"})
+        original = SearchResult(
+            content="original", url="http://x.com", score=0.9, metadata={"k": "v"}
+        )
         updated = dataclasses.replace(original, score=0.1)
 
         assert updated.content == "original"
@@ -69,7 +72,10 @@ class TestSearchResult:
 
     def test_metadata_with_string_values(self) -> None:
         result = SearchResult(
-            content="text", url="http://x.com", score=0.9, metadata={"source": "web", "date": "2024"}
+            content="text",
+            url="http://x.com",
+            score=0.9,
+            metadata={"source": "web", "date": "2024"},
         )
         assert result.metadata == {"source": "web", "date": "2024"}
 

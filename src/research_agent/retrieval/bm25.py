@@ -51,8 +51,7 @@ class BM25Encoder:
         """
         if not texts:
             raise ValueError(
-                "Cannot fit BM25Encoder on an empty corpus. "
-                "Provide at least one document."
+                "Cannot fit BM25Encoder on an empty corpus. " "Provide at least one document."
             )
         corpus = [self._tokenize(t) for t in texts]
         bm25 = BM25Okapi(corpus)

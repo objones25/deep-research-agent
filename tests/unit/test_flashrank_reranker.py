@@ -1,4 +1,5 @@
 """Tests for FlashRankReranker cross-encoder reranking."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -8,7 +9,6 @@ from flashrank import RerankRequest
 
 from research_agent.retrieval.protocols import SearchResult
 from research_agent.retrieval.reranker import FlashRankReranker
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,9 +38,7 @@ def make_reranker(
 ) -> tuple[FlashRankReranker, MagicMock]:
     ranker = MagicMock()
     ranker.rerank = MagicMock(
-        return_value=rerank_return
-        if rerank_return is not None
-        else [{"id": 0, "score": 0.95}]
+        return_value=rerank_return if rerank_return is not None else [{"id": 0, "score": 0.95}]
     )
     return FlashRankReranker(ranker=ranker, top_n=top_n), ranker
 
@@ -152,13 +150,17 @@ class TestFlashRankRerankerResultCorrectness:
 
     async def test_original_content_preserved(self) -> None:
         reranker, _ = make_reranker(rerank_return=[{"id": 0, "score": 0.9}])
-        results = [SearchResult(content="preserved content", url="http://x.com", score=0.1, metadata={})]
+        results = [
+            SearchResult(content="preserved content", url="http://x.com", score=0.1, metadata={})
+        ]
         output = await reranker.rerank("query", results)
         assert output[0].content == "preserved content"
 
     async def test_original_url_preserved(self) -> None:
         reranker, _ = make_reranker(rerank_return=[{"id": 0, "score": 0.9}])
-        results = [SearchResult(content="text", url="http://preserved.com/doc", score=0.1, metadata={})]
+        results = [
+            SearchResult(content="text", url="http://preserved.com/doc", score=0.1, metadata={})
+        ]
         output = await reranker.rerank("query", results)
         assert output[0].url == "http://preserved.com/doc"
 
@@ -203,5 +205,5 @@ class TestFlashRankRerankerResultCorrectness:
             SearchResult(content="third", url="http://c.com", score=0.1, metadata={}),
         ]
         output = await reranker.rerank("query", results)
-        assert output[0].content == "third"   # id=2
-        assert output[1].content == "first"   # id=0
+        assert output[0].content == "third"  # id=2
+        assert output[1].content == "first"  # id=0

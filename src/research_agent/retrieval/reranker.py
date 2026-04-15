@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from typing import cast
 
 from flashrank import Ranker, RerankRequest
 
@@ -48,13 +49,11 @@ class FlashRankReranker:
 
         passages = [{"id": i, "text": r.content} for i, r in enumerate(results)]
         request = RerankRequest(query=query, passages=passages)
-        reranked: list[dict[str, object]] = await asyncio.to_thread(
-            self._ranker.rerank, request
-        )
+        reranked: list[dict[str, object]] = await asyncio.to_thread(self._ranker.rerank, request)
 
         output: list[SearchResult] = []
         for passage in reranked[: self._top_n]:
-            original = results[int(passage["id"])]
+            original = results[cast(int, passage["id"])]
             score = float(passage.get("score", 0.0))  # type: ignore[arg-type]
             output.append(dataclasses.replace(original, score=score))
         return output

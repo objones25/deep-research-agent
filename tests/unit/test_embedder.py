@@ -1,4 +1,5 @@
 """Tests for HuggingFaceEmbedder dense embedding generation."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -7,7 +8,6 @@ import numpy as np
 import pytest
 
 from research_agent.retrieval.embedder import HuggingFaceEmbedder
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -66,7 +66,9 @@ class TestHuggingFaceEmbedderAPICall:
     async def test_calls_feature_extraction_with_correct_model(self) -> None:
         client = AsyncMock()
         client.feature_extraction = AsyncMock(return_value=np.array([0.1, 0.2]))
-        embedder = HuggingFaceEmbedder(client=client, model="BAAI/bge-large-en-v1.5", expected_dim=2)
+        embedder = HuggingFaceEmbedder(
+            client=client, model="BAAI/bge-large-en-v1.5", expected_dim=2
+        )
         await embedder.embed("query")
         _, kwargs = client.feature_extraction.call_args
         assert kwargs["model"] == "BAAI/bge-large-en-v1.5"

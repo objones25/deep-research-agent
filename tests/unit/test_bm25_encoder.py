@@ -1,10 +1,10 @@
 """Tests for BM25Encoder sparse vector encoding."""
+
 from __future__ import annotations
 
 import pytest
 
 from research_agent.retrieval.bm25 import BM25Encoder
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -112,6 +112,7 @@ class TestBM25EncoderEncodeDocument:
         enc = fitted_encoder()
         idx, val = enc.encode_document("hello world")
         import math
+
         assert all(isinstance(v, float) and math.isfinite(v) for v in val)
 
     def test_oov_only_document_returns_empty_lists(self) -> None:

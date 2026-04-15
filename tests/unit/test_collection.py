@@ -1,13 +1,13 @@
 """Tests for ensure_collection Qdrant collection management helper."""
+
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock
 
 import pytest
 from qdrant_client import models
 
 from research_agent.retrieval.collection import ensure_collection
-
 
 # ---------------------------------------------------------------------------
 # Helpers

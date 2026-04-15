@@ -7,6 +7,7 @@ To run locally::
     docker compose up qdrant -d
     uv run pytest tests/integration/ -v -m integration
 """
+
 from __future__ import annotations
 
 import os

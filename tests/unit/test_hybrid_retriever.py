@@ -1,4 +1,5 @@
 """Tests for HybridRetriever dense+BM25 search with Qdrant-native RRF fusion."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -8,7 +9,6 @@ from qdrant_client import models
 
 from research_agent.retrieval.hybrid import HybridRetriever
 from research_agent.retrieval.protocols import SearchResult
-
 
 # ---------------------------------------------------------------------------
 # Helpers
