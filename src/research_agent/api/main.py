@@ -140,8 +140,10 @@ async def _build_agent_runner(settings: Settings) -> AgentRunner:
     # Firecrawl tools
     # ------------------------------------------------------------------
     # The Firecrawl remote MCP server authenticates via an API-key path segment.
+    # The v2 Streamable HTTP endpoint is at /<api_key>/v2/mcp.
     mcp_url = (
-        f"{settings.firecrawl_mcp_url.rstrip('/')}/{settings.firecrawl_api_key.get_secret_value()}"
+        f"{settings.firecrawl_mcp_url.rstrip('/')}"
+        f"/{settings.firecrawl_api_key.get_secret_value()}/v2/mcp"
     )
     tools: list[Tool] = [
         FirecrawlSearchTool(mcp_url=mcp_url),
