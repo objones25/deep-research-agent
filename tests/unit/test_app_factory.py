@@ -11,6 +11,15 @@ from fastapi.testclient import TestClient
 from research_agent.api.main import create_app
 from research_agent.api.middleware import RequestIDMiddleware
 
+
+@pytest.fixture(autouse=True)
+def _required_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HF_TOKEN", "hf_test_" + "x" * 30)
+    monkeypatch.setenv("MEM0_API_KEY", "m0_test_" + "x" * 30)
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "fc_test_" + "x" * 30)
+    monkeypatch.setenv("SECRET_KEY", "a" * 64)
+
+
 # ---------------------------------------------------------------------------
 # App factory basics
 # ---------------------------------------------------------------------------
