@@ -10,18 +10,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
-_VALID_ROLES: frozenset[str] = frozenset({"system", "user", "assistant"})
+_VALID_ROLES: frozenset[str] = frozenset({"system", "user", "assistant", "tool"})
 
 
 @dataclass(frozen=True)
 class Message:
     """An immutable value object representing a single chat message.
 
-    ``role`` is constrained to the three standard OpenAI-compatible roles.
-    Validated at construction time so callers fail fast on bad data.
+    ``role`` is constrained to the four standard OpenAI-compatible roles.
+    ``"tool"`` carries tool-call results back to the model in multi-turn
+    tool-use conversations. Validated at construction time so callers fail
+    fast on bad data.
     """
 
-    role: Literal["system", "user", "assistant"]
+    role: Literal["system", "user", "assistant", "tool"]
     content: str
 
     def __post_init__(self) -> None:

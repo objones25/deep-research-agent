@@ -60,12 +60,16 @@ class TestMessage:
         msg = Message(role="assistant", content="I can help with that.")
         assert msg.role == "assistant"
 
+    def test_tool_role_is_valid(self) -> None:
+        msg = Message(role="tool", content='{"result": "Paris"}')
+        assert msg.role == "tool"
+
     def test_invalid_role_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Invalid role"):
             Message(role="invalid", content="Hello")  # type: ignore[arg-type]
 
-    def test_all_three_valid_roles_accepted(self) -> None:
-        roles = ("system", "user", "assistant")
+    def test_all_four_valid_roles_accepted(self) -> None:
+        roles = ("system", "user", "assistant", "tool")
         for role in roles:
             msg = Message(role=role, content="text")  # type: ignore[arg-type]
             assert msg.role == role
