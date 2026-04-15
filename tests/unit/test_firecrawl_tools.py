@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp.types import CallToolResult, TextContent
+from structlog.testing import capture_logs
 
 from research_agent.tools.firecrawl import FirecrawlScrapeTool, FirecrawlSearchTool
 from research_agent.tools.protocols import (
@@ -440,3 +441,78 @@ class TestFirecrawlScrapeToolAclose:
 
         assert tool._session is None
         assert tool._exit_stack is None
+
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestFirecrawlToolsLogging:
+    async def test_connect_logs_mcp_session_connect(self, mcp_mocks: tuple) -> None:
+        _mock_http, _mock_cs, _mock_session = mcp_mocks
+        tool = FirecrawlSearchTool(MCP_URL)
+        with capture_logs() as cap:
+            await tool._ensure_connected()
+        events = [e["event"] for e in cap]
+        assert "mcp_session_connect" in events
+        entry = next(e for e in cap if e["event"] == "mcp_session_connect")
+        assert entry["log_level"] == "debug"
+
+    async def test_search_logs_tool_search_complete_on_success(self, mcp_mocks: tuple) -> None:
+        _mock_http, _mock_cs, mock_session = mcp_mocks
+        mock_session.call_tool.return_value = make_text_result("results")
+        tool = FirecrawlSearchTool(MCP_URL)
+        with capture_logs() as cap:
+            await tool.execute(SearchInput(query="test query"))
+        events = [e["event"] for e in cap]
+        assert "tool_search_complete" in events
+        entry = next(e for e in cap if e["event"] == "tool_search_complete")
+        assert entry["log_level"] == "info"
+        assert "latency_ms" in entry
+
+    async def test_search_logs_tool_search_failed_on_exception(self, mcp_mocks: tuple) -> None:
+        _mock_http, _mock_cs, mock_session = mcp_mocks
+        mock_session.call_tool.side_effect = RuntimeError("connection reset")
+        tool = FirecrawlSearchTool(MCP_URL)
+        with capture_logs() as cap, pytest.raises(ToolExecutionError):
+            await tool.execute(SearchInput(query="test query"))
+        events = [e["event"] for e in cap]
+        assert "tool_search_failed" in events
+        entry = next(e for e in cap if e["event"] == "tool_search_failed")
+        assert entry["log_level"] == "error"
+
+    async def test_scrape_logs_tool_scrape_complete_on_success(self, mcp_mocks: tuple) -> None:
+        _mock_http, _mock_cs, mock_session = mcp_mocks
+        mock_session.call_tool.return_value = make_text_result("page content")
+        tool = FirecrawlScrapeTool(MCP_URL)
+        with capture_logs() as cap:
+            await tool.execute(ScrapeInput(url="https://example.com/page"))
+        events = [e["event"] for e in cap]
+        assert "tool_scrape_complete" in events
+        entry = next(e for e in cap if e["event"] == "tool_scrape_complete")
+        assert entry["log_level"] == "info"
+        assert "latency_ms" in entry
+
+    async def test_scrape_logs_url_domain_not_full_url(self, mcp_mocks: tuple) -> None:
+        _mock_http, _mock_cs, mock_session = mcp_mocks
+        mock_session.call_tool.return_value = make_text_result("content")
+        tool = FirecrawlScrapeTool(MCP_URL)
+        with capture_logs() as cap:
+            await tool.execute(ScrapeInput(url="https://example.com/sensitive/path?token=abc"))
+        entry = next(e for e in cap if e["event"] == "tool_scrape_complete")
+        assert entry["url_domain"] == "example.com"
+        assert "url" not in entry
+
+    async def test_scrape_logs_tool_scrape_failed_on_exception(self, mcp_mocks: tuple) -> None:
+        _mock_http, _mock_cs, mock_session = mcp_mocks
+        mock_session.call_tool.side_effect = OSError("DNS resolution failed")
+        tool = FirecrawlScrapeTool(MCP_URL)
+        with capture_logs() as cap, pytest.raises(ToolExecutionError):
+            await tool.execute(ScrapeInput(url="https://example.com"))
+        events = [e["event"] for e in cap]
+        assert "tool_scrape_failed" in events
+        entry = next(e for e in cap if e["event"] == "tool_scrape_failed")
+        assert entry["log_level"] == "error"
+        assert entry["url_domain"] == "example.com"

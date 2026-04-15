@@ -9,6 +9,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from research_agent.memory.mem0 import Mem0MemoryService
 from research_agent.memory.protocols import MemoryService
@@ -159,3 +160,43 @@ class TestMem0ServiceSearch:
         mock_client.search.side_effect = RuntimeError("Mem0 unavailable")
         with pytest.raises(RuntimeError, match="Mem0 unavailable"):
             await service.search(session_id="sess_err", query="q")
+
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestMem0ServiceLogging:
+    async def test_add_logs_memory_add_complete(self, service: Mem0MemoryService) -> None:
+        with capture_logs() as cap:
+            await service.add(session_id="sess-log", content="some content")
+        events = [e["event"] for e in cap]
+        assert "memory_add_complete" in events
+        entry = next(e for e in cap if e["event"] == "memory_add_complete")
+        assert entry["log_level"] == "info"
+        assert entry["session_id"] == "sess-log"
+        assert "latency_ms" in entry
+
+    async def test_search_logs_memory_search_complete(self, service: Mem0MemoryService) -> None:
+        with capture_logs() as cap:
+            await service.search(session_id="sess-log", query="test query")
+        events = [e["event"] for e in cap]
+        assert "memory_search_complete" in events
+        entry = next(e for e in cap if e["event"] == "memory_search_complete")
+        assert entry["log_level"] == "info"
+        assert entry["session_id"] == "sess-log"
+        assert entry["num_results"] == 2
+        assert "latency_ms" in entry
+        assert entry["hit"] is True
+
+    async def test_search_logs_hit_false_when_no_results(
+        self, service: Mem0MemoryService, mock_client: MagicMock
+    ) -> None:
+        mock_client.search.return_value = []
+        with capture_logs() as cap:
+            await service.search(session_id="sess-log", query="nothing")
+        entry = next(e for e in cap if e["event"] == "memory_search_complete")
+        assert entry["hit"] is False
+        assert entry["num_results"] == 0

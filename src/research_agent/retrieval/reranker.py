@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import time
 from typing import cast
 
 from flashrank import Ranker, RerankRequest
 
+from research_agent.logging import get_logger
 from research_agent.retrieval.protocols import SearchResult
+
+_log = get_logger(__name__)
 
 
 class FlashRankReranker:
@@ -47,6 +51,7 @@ class FlashRankReranker:
         if not results:
             return []
 
+        t0 = time.perf_counter()
         passages = [{"id": i, "text": r.content} for i, r in enumerate(results)]
         request = RerankRequest(query=query, passages=passages)
         reranked: list[dict[str, object]] = await asyncio.to_thread(self._ranker.rerank, request)
@@ -56,4 +61,10 @@ class FlashRankReranker:
             original = results[cast(int, passage["id"])]
             score = float(passage.get("score", 0.0))  # type: ignore[arg-type]
             output.append(dataclasses.replace(original, score=score))
+        _log.info(
+            "rerank_complete",
+            input_count=len(results),
+            output_count=len(output),
+            latency_ms=round((time.perf_counter() - t0) * 1000, 1),
+        )
         return output

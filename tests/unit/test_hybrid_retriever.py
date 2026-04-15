@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from qdrant_client import models
+from structlog.testing import capture_logs
 
 from research_agent.retrieval.hybrid import HybridRetriever
 from research_agent.retrieval.protocols import SearchResult
@@ -263,3 +264,30 @@ class TestHybridRetrieverResults:
         retriever, *_ = make_retriever(points=[point])
         results = await retriever.retrieve("query", top_k=5)
         assert results[0].metadata == {"count": "42", "flag": "True"}
+
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestHybridRetrieverLogging:
+    async def test_logs_hybrid_search_complete_with_num_results(self) -> None:
+        points = [make_scored_point(content=f"doc {i}") for i in range(3)]
+        retriever, *_ = make_retriever(points=points)
+        with capture_logs() as cap:
+            await retriever.retrieve("query", top_k=5)
+        events = [e["event"] for e in cap]
+        assert "hybrid_search_complete" in events
+        entry = next(e for e in cap if e["event"] == "hybrid_search_complete")
+        assert entry["log_level"] == "info"
+        assert entry["num_results"] == 3
+        assert "latency_ms" in entry
+
+    async def test_logs_hybrid_search_complete_on_empty_results(self) -> None:
+        retriever, *_ = make_retriever(points=[])
+        with capture_logs() as cap:
+            await retriever.retrieve("query", top_k=5)
+        entry = next(e for e in cap if e["event"] == "hybrid_search_complete")
+        assert entry["num_results"] == 0

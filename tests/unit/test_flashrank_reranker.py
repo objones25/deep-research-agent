@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from flashrank import RerankRequest
+from structlog.testing import capture_logs
 
 from research_agent.retrieval.protocols import SearchResult
 from research_agent.retrieval.reranker import FlashRankReranker
@@ -207,3 +208,32 @@ class TestFlashRankRerankerResultCorrectness:
         output = await reranker.rerank("query", results)
         assert output[0].content == "third"  # id=2
         assert output[1].content == "first"  # id=0
+
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestFlashRankRerankerLogging:
+    async def test_logs_rerank_complete(self) -> None:
+        results = [make_search_result(idx=i) for i in range(3)]
+        reranker, _ = make_reranker(
+            top_n=5, rerank_return=[{"id": i, "score": 0.9 - i * 0.1} for i in range(3)]
+        )
+        with capture_logs() as cap:
+            await reranker.rerank("query", results)
+        events = [e["event"] for e in cap]
+        assert "rerank_complete" in events
+        entry = next(e for e in cap if e["event"] == "rerank_complete")
+        assert entry["log_level"] == "info"
+        assert entry["input_count"] == 3
+        assert entry["output_count"] == 3
+        assert "latency_ms" in entry
+
+    async def test_no_log_on_empty_input(self) -> None:
+        reranker, _ = make_reranker()
+        with capture_logs() as cap:
+            await reranker.rerank("query", [])
+        assert "rerank_complete" not in [e["event"] for e in cap]

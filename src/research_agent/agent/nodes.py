@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Callable, Coroutine
 from typing import Any, Literal
 
 from research_agent.agent.state import AgentState
 from research_agent.llm.protocols import LLMClient
+from research_agent.logging import get_logger
 from research_agent.memory.protocols import MemoryService
 from research_agent.models.research import (
     Citation,
@@ -33,6 +35,8 @@ from research_agent.tools.protocols import ScrapeInput, SearchInput, Tool
 # ---------------------------------------------------------------------------
 
 NodeFn = Callable[[AgentState], Coroutine[Any, Any, dict[str, Any]]]
+
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Prompt helpers
@@ -82,8 +86,15 @@ def make_retrieval_node(retriever: Retriever, reranker: Reranker) -> NodeFn:
     """Return a node that retrieves and reranks documents for the current query."""
 
     async def retrieval_node(state: AgentState) -> dict[str, Any]:
+        t0 = time.perf_counter()
         raw: list[SearchResult] = await retriever.retrieve(state["query"], top_k=10)
         reranked: list[SearchResult] = await reranker.rerank(state["query"], raw)
+        _log.info(
+            "retrieval_executed",
+            num_retrieved=len(raw),
+            num_reranked=len(reranked),
+            latency_ms=round((time.perf_counter() - t0) * 1000, 1),
+        )
         return {"search_results": reranked}
 
     return retrieval_node
@@ -151,7 +162,7 @@ def make_reason_node(llm: LLMClient) -> NodeFn:
                 parsed = json.loads(match.group(1).strip())
                 tool_calls.append(parsed)
             except json.JSONDecodeError:
-                pass  # malformed tool call — skip silently
+                _log.warning("tool_call_parse_failed")
 
         return {
             "messages": new_messages,
@@ -196,6 +207,7 @@ def make_tool_node(tools: list[Tool]) -> NodeFn:
             raw_input: dict[str, Any] = call.get("input", {})
 
             if tool_name not in tool_map:
+                _log.warning("tool_unknown", tool_name=tool_name)
                 err = ToolResult(
                     is_error=True,
                     error=f"Unknown tool: {tool_name!r}",
@@ -208,6 +220,7 @@ def make_tool_node(tools: list[Tool]) -> NodeFn:
 
             tool_input = _build_tool_input(tool_name, raw_input)
             result: ToolResult = await tool_map[tool_name].execute(tool_input)
+            _log.info("tool_dispatched", tool_name=tool_name, is_error=result.is_error)
             new_results.append(result)
             content = result.error if result.is_error else (result.content or "")
             new_messages.append(Message(role="tool", content=f"[{tool_name}] {content}"))
@@ -230,6 +243,7 @@ def make_synthesis_node(llm: LLMClient, memory_service: MemoryService) -> NodeFn
     """Return a node that synthesises a final report and persists it to memory."""
 
     async def synthesis_node(state: AgentState) -> dict[str, Any]:
+        _log.info("synthesis_started", session_id=state["session_id"])
         context = _build_context(state)
         synthesis_prompt = (
             f"Based on all gathered information, write a comprehensive answer to: "

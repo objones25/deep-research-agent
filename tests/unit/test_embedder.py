@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
+from structlog.testing import capture_logs
 
 from research_agent.retrieval.embedder import HuggingFaceEmbedder
 
@@ -196,3 +197,30 @@ class TestPool:
         result = HuggingFaceEmbedder._pool(arr)
         assert result.ndim == 1
         np.testing.assert_array_equal(result, [1.0, 2.0])
+
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestHuggingFaceEmbedderLogging:
+    async def test_logs_warning_on_dimension_mismatch(self) -> None:
+        arr = np.array([0.1, 0.2, 0.3])  # dim=3, but expected_dim=5
+        embedder, _ = make_embedder(return_value=arr, expected_dim=5)
+        with capture_logs() as cap, pytest.raises(ValueError):
+            await embedder.embed("hello")
+        events = [e["event"] for e in cap]
+        assert "embedding_dim_mismatch" in events
+        entry = next(e for e in cap if e["event"] == "embedding_dim_mismatch")
+        assert entry["log_level"] == "warning"
+        assert entry["expected"] == 5
+        assert entry["got"] == 3
+
+    async def test_no_log_on_successful_embed(self) -> None:
+        arr = np.array([0.1, 0.2, 0.3])
+        embedder, _ = make_embedder(return_value=arr, expected_dim=3)
+        with capture_logs() as cap:
+            await embedder.embed("hello")
+        assert "embedding_dim_mismatch" not in [e["event"] for e in cap]

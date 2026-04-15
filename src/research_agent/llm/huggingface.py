@@ -23,9 +23,14 @@ Usage::
 
 from __future__ import annotations
 
+import time
+
 from huggingface_hub import AsyncInferenceClient
 
 from research_agent.llm.protocols import Message
+from research_agent.logging import get_logger
+
+_log = get_logger(__name__)
 
 
 class HuggingFaceClient:
@@ -77,6 +82,8 @@ class HuggingFaceClient:
         if not messages:
             raise ValueError("messages must not be empty.")
 
+        _log.info("llm_request_started", model=self._model, num_messages=len(messages))
+        t0 = time.perf_counter()
         response = await self._client.chat.completions.create(
             model=self._model,
             messages=[{"role": m.role, "content": m.content} for m in messages],
@@ -86,4 +93,10 @@ class HuggingFaceClient:
         content: str | None = response.choices[0].message.content
         if content is None:
             raise ValueError("LLM returned no content; check model availability and quota.")
+        _log.info(
+            "llm_request_complete",
+            model=self._model,
+            latency_ms=round((time.perf_counter() - t0) * 1000, 1),
+            response_len=len(content),
+        )
         return content

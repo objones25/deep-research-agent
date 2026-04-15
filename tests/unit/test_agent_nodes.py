@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from research_agent.agent.nodes import (
     make_memory_node,
@@ -548,3 +549,135 @@ class TestRoutingFunctions:
     def test_should_use_tools_returns_retrieve_when_no_pending(self) -> None:
         state = _base_state(tool_calls_pending=[])
         assert should_use_tools(state) == "retrieve"
+
+
+# ---------------------------------------------------------------------------
+# Logging tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestRetrievalNodeLogging:
+    @pytest.mark.asyncio
+    async def test_logs_retrieval_executed_with_counts_and_latency(self) -> None:
+        raw_results = [_search_result(1), _search_result(2)]
+        reranked_results = [_search_result(1)]
+        retriever = AsyncMock()
+        retriever.retrieve.return_value = raw_results
+        reranker = AsyncMock()
+        reranker.rerank.return_value = reranked_results
+
+        node = make_retrieval_node(retriever, reranker)
+        with capture_logs() as cap:
+            await node(_base_state())
+
+        events = [e["event"] for e in cap]
+        assert "retrieval_executed" in events
+        entry = next(e for e in cap if e["event"] == "retrieval_executed")
+        assert entry["log_level"] == "info"
+        assert entry["num_retrieved"] == 2
+        assert entry["num_reranked"] == 1
+        assert "latency_ms" in entry
+
+
+@pytest.mark.unit
+class TestReasonNodeLogging:
+    @pytest.mark.asyncio
+    async def test_logs_warning_on_malformed_tool_call_json(self) -> None:
+        llm = AsyncMock()
+        llm.complete.return_value = "<tool_call>NOT VALID JSON {{</tool_call>"
+
+        node = make_reason_node(llm)
+        with capture_logs() as cap:
+            await node(_base_state())
+
+        events = [e["event"] for e in cap]
+        assert "tool_call_parse_failed" in events
+        entry = next(e for e in cap if e["event"] == "tool_call_parse_failed")
+        assert entry["log_level"] == "warning"
+
+    @pytest.mark.asyncio
+    async def test_no_parse_warning_on_valid_tool_call(self) -> None:
+        llm = AsyncMock()
+        llm.complete.return_value = (
+            "<tool_call>"
+            '{"tool": "firecrawl_search", "input": {"query": "quantum"}}'
+            "</tool_call>"
+        )
+
+        node = make_reason_node(llm)
+        with capture_logs() as cap:
+            await node(_base_state())
+
+        parse_failures = [e for e in cap if e["event"] == "tool_call_parse_failed"]
+        assert parse_failures == []
+
+
+@pytest.mark.unit
+class TestToolNodeLogging:
+    def _make_tool(self, name: str, result: ToolResult) -> MagicMock:
+        tool = MagicMock()
+        tool.name = name
+        tool.execute = AsyncMock(return_value=result)
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_logs_tool_unknown_warning(self) -> None:
+        node = make_tool_node([])
+        state = _base_state(tool_calls_pending=[{"tool": "nonexistent_tool", "input": {}}])
+
+        with capture_logs() as cap:
+            await node(state)
+
+        events = [e["event"] for e in cap]
+        assert "tool_unknown" in events
+        entry = next(e for e in cap if e["event"] == "tool_unknown")
+        assert entry["log_level"] == "warning"
+        assert entry["tool_name"] == "nonexistent_tool"
+
+    @pytest.mark.asyncio
+    async def test_logs_tool_dispatched_on_success(self) -> None:
+        tool = self._make_tool("firecrawl_search", ToolResult(is_error=False, content="ok"))
+        node = make_tool_node([tool])
+        state = _base_state(
+            tool_calls_pending=[{"tool": "firecrawl_search", "input": {"query": "q"}}]
+        )
+
+        with capture_logs() as cap:
+            await node(state)
+
+        events = [e["event"] for e in cap]
+        assert "tool_dispatched" in events
+        entry = next(e for e in cap if e["event"] == "tool_dispatched")
+        assert entry["log_level"] == "info"
+        assert entry["tool_name"] == "firecrawl_search"
+
+    @pytest.mark.asyncio
+    async def test_no_tool_dispatched_log_for_unknown_tool(self) -> None:
+        node = make_tool_node([])
+        state = _base_state(tool_calls_pending=[{"tool": "bad_tool", "input": {}}])
+
+        with capture_logs() as cap:
+            await node(state)
+
+        dispatched = [e for e in cap if e["event"] == "tool_dispatched"]
+        assert dispatched == []
+
+
+@pytest.mark.unit
+class TestSynthesisNodeLogging:
+    @pytest.mark.asyncio
+    async def test_logs_synthesis_started(self) -> None:
+        llm = AsyncMock()
+        llm.complete.return_value = "Summary."
+        memory_service = AsyncMock()
+
+        node = make_synthesis_node(llm, memory_service)
+        with capture_logs() as cap:
+            await node(_base_state(session_id="sess-log-test", search_results=[]))
+
+        events = [e["event"] for e in cap]
+        assert "synthesis_started" in events
+        entry = next(e for e in cap if e["event"] == "synthesis_started")
+        assert entry["log_level"] == "info"
+        assert entry["session_id"] == "sess-log-test"

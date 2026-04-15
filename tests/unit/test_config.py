@@ -111,6 +111,14 @@ class TestSettingsDefaults:
         settings = _make_settings()
         assert settings.langchain_api_key is None
 
+    def test_default_app_version(self) -> None:
+        settings = _make_settings()
+        assert settings.app_version == "0.1.0"
+
+    def test_default_environment(self) -> None:
+        settings = _make_settings()
+        assert settings.environment == "dev"
+
 
 @pytest.mark.unit
 class TestSettingsOverrides:
@@ -162,6 +170,18 @@ class TestSettingsOverrides:
         settings = _make_settings(langchain_api_key="ls__abc123def456")
         assert settings.langchain_api_key is not None
         assert settings.langchain_api_key.get_secret_value() == "ls__abc123def456"
+
+    def test_custom_environment_staging(self) -> None:
+        settings = _make_settings(environment="staging")
+        assert settings.environment == "staging"
+
+    def test_custom_environment_prod(self) -> None:
+        settings = _make_settings(environment="prod")
+        assert settings.environment == "prod"
+
+    def test_invalid_environment_raises(self) -> None:
+        with pytest.raises((ValueError, Exception)):
+            _make_settings(environment="production")
 
 
 # ---------------------------------------------------------------------------

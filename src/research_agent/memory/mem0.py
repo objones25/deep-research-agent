@@ -15,7 +15,13 @@ The ``session_id`` argument on every method maps directly to Mem0's
 
 from __future__ import annotations
 
+import time
+
 from mem0 import AsyncMemoryClient
+
+from research_agent.logging import get_logger
+
+_log = get_logger(__name__)
 
 
 class Mem0MemoryService:
@@ -40,9 +46,15 @@ class Mem0MemoryService:
         ``user`` role, which is the format Mem0 expects for plain-text
         memory ingestion.
         """
+        t0 = time.perf_counter()
         await self._client.add(
             [{"role": "user", "content": content}],
             user_id=session_id,
+        )
+        _log.info(
+            "memory_add_complete",
+            session_id=session_id,
+            latency_ms=round((time.perf_counter() - t0) * 1000, 1),
         )
 
     async def search(self, session_id: str, query: str) -> list[str]:
@@ -53,8 +65,17 @@ class Mem0MemoryService:
         Entries that are missing the ``"memory"`` key are silently skipped
         — this guards against schema changes in the Mem0 API response.
         """
+        t0 = time.perf_counter()
         results: list[dict[str, object]] = await self._client.search(
             query,
             user_id=session_id,
         )
-        return [str(r["memory"]) for r in results if "memory" in r]
+        memories = [str(r["memory"]) for r in results if "memory" in r]
+        _log.info(
+            "memory_search_complete",
+            session_id=session_id,
+            num_results=len(memories),
+            latency_ms=round((time.perf_counter() - t0) * 1000, 1),
+            hit=len(memories) > 0,
+        )
+        return memories

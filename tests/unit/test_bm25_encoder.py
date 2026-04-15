@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from structlog.testing import capture_logs
 
 from research_agent.retrieval.bm25 import BM25Encoder
 
@@ -247,3 +248,39 @@ class TestBM25EncoderTokenize:
         tokens = BM25Encoder._tokenize("hello world")
         assert isinstance(tokens, list)
         assert all(isinstance(t, str) for t in tokens)
+
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBM25EncoderLogging:
+    def test_logs_bm25_index_fitted_on_fit(self) -> None:
+        enc = BM25Encoder()
+        with capture_logs() as cap:
+            enc.fit(["hello world", "foo bar baz"])
+        events = [e["event"] for e in cap]
+        assert "bm25_index_fitted" in events
+        entry = next(e for e in cap if e["event"] == "bm25_index_fitted")
+        assert entry["log_level"] == "info"
+        assert entry["corpus_size"] == 2
+        assert "vocab_size" in entry
+
+    def test_logs_sparse_query_empty_on_oov_query(self) -> None:
+        enc = BM25Encoder()
+        enc.fit(["hello world", "foo bar"])
+        with capture_logs() as cap:
+            enc.encode_query("completely_unknown_xyz_abc")
+        events = [e["event"] for e in cap]
+        assert "sparse_query_empty" in events
+        entry = next(e for e in cap if e["event"] == "sparse_query_empty")
+        assert entry["log_level"] == "debug"
+
+    def test_no_sparse_query_empty_log_for_known_term(self) -> None:
+        enc = BM25Encoder()
+        enc.fit(["hello world"])
+        with capture_logs() as cap:
+            enc.encode_query("hello")
+        assert "sparse_query_empty" not in [e["event"] for e in cap]

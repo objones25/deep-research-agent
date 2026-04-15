@@ -18,6 +18,10 @@ from typing import Any, cast
 import numpy as np
 from huggingface_hub import AsyncInferenceClient
 
+from research_agent.logging import get_logger
+
+_log = get_logger(__name__)
+
 
 class HuggingFaceEmbedder:
     """Generates dense embeddings via the HuggingFace Inference API.
@@ -58,6 +62,11 @@ class HuggingFaceEmbedder:
         embedding = self._pool(np.asarray(raw, dtype=np.float32))
 
         if len(embedding) != self._expected_dim:
+            _log.warning(
+                "embedding_dim_mismatch",
+                expected=self._expected_dim,
+                got=len(embedding),
+            )
             raise ValueError(
                 f"Embedding dimension mismatch: "
                 f"expected {self._expected_dim}, got {len(embedding)}. "

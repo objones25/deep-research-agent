@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from research_agent.llm.huggingface import HuggingFaceClient
 from research_agent.llm.protocols import LLMClient, Message
@@ -154,3 +155,36 @@ class TestHuggingFaceClientProtocolConformance:
     def test_satisfies_llm_client_protocol(self) -> None:
         client, _ = make_client()
         assert isinstance(client, LLMClient)
+
+
+# ---------------------------------------------------------------------------
+# Logging tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestHuggingFaceClientLogging:
+    async def test_logs_llm_request_started(self) -> None:
+        client, _ = make_client(content="hello")
+        with capture_logs() as cap:
+            await client.complete([Message(role="user", content="ping")])
+
+        events = [e["event"] for e in cap]
+        assert "llm_request_started" in events
+        entry = next(e for e in cap if e["event"] == "llm_request_started")
+        assert entry["log_level"] == "info"
+        assert entry["model"] == "test-model"
+        assert entry["num_messages"] == 1
+
+    async def test_logs_llm_request_complete_with_latency(self) -> None:
+        client, _ = make_client(content="response text")
+        with capture_logs() as cap:
+            await client.complete([Message(role="user", content="ping")])
+
+        events = [e["event"] for e in cap]
+        assert "llm_request_complete" in events
+        entry = next(e for e in cap if e["event"] == "llm_request_complete")
+        assert entry["log_level"] == "info"
+        assert entry["model"] == "test-model"
+        assert "latency_ms" in entry
+        assert entry["response_len"] == len("response text")

@@ -8,12 +8,16 @@ branches and RRF fusion — no extra round-trips.
 from __future__ import annotations
 
 import asyncio
+import time
 
 from qdrant_client import AsyncQdrantClient, models
 from qdrant_client.models import ScoredPoint
 
+from research_agent.logging import get_logger
 from research_agent.retrieval.bm25 import BM25Encoder
 from research_agent.retrieval.protocols import Embedder, SearchResult
+
+_log = get_logger(__name__)
 
 
 class HybridRetriever:
@@ -55,6 +59,7 @@ class HybridRetriever:
         if top_k <= 0:
             raise ValueError(f"top_k must be a positive integer, got {top_k!r}.")
 
+        t0 = time.perf_counter()
         results = await asyncio.gather(
             self._embedder.embed(query),
             asyncio.to_thread(self._bm25_encoder.encode_query, query),
@@ -81,7 +86,13 @@ class HybridRetriever:
             query=models.FusionQuery(fusion=models.Fusion.RRF),
             limit=top_k,
         )
-        return [self._to_search_result(p) for p in response.points]
+        search_results = [self._to_search_result(p) for p in response.points]
+        _log.info(
+            "hybrid_search_complete",
+            num_results=len(search_results),
+            latency_ms=round((time.perf_counter() - t0) * 1000, 1),
+        )
+        return search_results
 
     # ------------------------------------------------------------------
     # Internal helpers

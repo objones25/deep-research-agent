@@ -15,6 +15,10 @@ import re
 
 from rank_bm25 import BM25Okapi
 
+from research_agent.logging import get_logger
+
+_log = get_logger(__name__)
+
 
 class BM25Encoder:
     """Converts text to BM25 sparse vectors using a fixed vocabulary.
@@ -60,6 +64,7 @@ class BM25Encoder:
         self._vocab = {term: idx for idx, term in enumerate(all_terms)}
         self._idf = dict(bm25.idf)
         self._fitted = True
+        _log.info("bm25_index_fitted", corpus_size=len(texts), vocab_size=len(self._vocab))
 
     def encode_document(self, text: str) -> tuple[list[int], list[float]]:
         """Convert a document to a BM25 sparse vector.
@@ -114,6 +119,7 @@ class BM25Encoder:
             best[idx] = max(best.get(idx, 0.0), float(idf))
 
         if not best:
+            _log.debug("sparse_query_empty")
             return [], []
         return list(best.keys()), list(best.values())
 

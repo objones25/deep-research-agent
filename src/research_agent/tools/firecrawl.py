@@ -14,12 +14,15 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import time
 from contextlib import AsyncExitStack
+from urllib.parse import urlparse
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult, TextContent
 
+from research_agent.logging import get_logger
 from research_agent.tools.protocols import (
     ScrapeInput,
     SearchInput,
@@ -27,6 +30,8 @@ from research_agent.tools.protocols import (
     ToolInput,
     ToolResult,
 )
+
+_log = get_logger(__name__)
 
 
 def _extract_text(result: CallToolResult) -> str:
@@ -74,6 +79,7 @@ class _FirecrawlBaseTool:
                 raise
             self._exit_stack = stack
             self._session = session
+            _log.debug("mcp_session_connect")
             return session
 
     async def aclose(self) -> None:
@@ -123,14 +129,20 @@ class FirecrawlSearchTool(_FirecrawlBaseTool):
                 f"FirecrawlSearchTool requires SearchInput, got {type(tool_input).__name__}"
             )
         session = await self._ensure_connected()
+        t0 = time.perf_counter()
         try:
             result: CallToolResult = await session.call_tool(
                 "firecrawl_search",
                 arguments={"query": tool_input.query, "limit": tool_input.limit},
             )
         except Exception as exc:
+            _log.error("tool_search_failed", error=str(exc))
             raise ToolExecutionError(f"MCP call_tool failed: {exc}") from exc
 
+        _log.info(
+            "tool_search_complete",
+            latency_ms=round((time.perf_counter() - t0) * 1000, 1),
+        )
         if result.isError:
             return ToolResult(is_error=True, error=_extract_text(result))
         return ToolResult(is_error=False, content=_extract_text(result))
@@ -173,7 +185,9 @@ class FirecrawlScrapeTool(_FirecrawlBaseTool):
             raise TypeError(
                 f"FirecrawlScrapeTool requires ScrapeInput, got {type(tool_input).__name__}"
             )
+        url_domain = urlparse(tool_input.url).netloc
         session = await self._ensure_connected()
+        t0 = time.perf_counter()
         try:
             result: CallToolResult = await session.call_tool(
                 "firecrawl_scrape",
@@ -183,8 +197,14 @@ class FirecrawlScrapeTool(_FirecrawlBaseTool):
                 },
             )
         except Exception as exc:
+            _log.error("tool_scrape_failed", url_domain=url_domain, error=str(exc))
             raise ToolExecutionError(f"MCP call_tool failed: {exc}") from exc
 
+        _log.info(
+            "tool_scrape_complete",
+            url_domain=url_domain,
+            latency_ms=round((time.perf_counter() - t0) * 1000, 1),
+        )
         if result.isError:
             return ToolResult(is_error=True, error=_extract_text(result))
         return ToolResult(is_error=False, content=_extract_text(result))

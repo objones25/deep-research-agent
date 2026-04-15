@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from qdrant_client import AsyncQdrantClient, models
 
+from research_agent.logging import get_logger
+
+_log = get_logger(__name__)
+
 
 async def ensure_collection(
     client: AsyncQdrantClient,
@@ -29,6 +33,13 @@ async def ensure_collection(
         vector_size: Dense vector dimensionality (from ``Settings.qdrant_vector_size``).
     """
     if await client.collection_exists(name):
+        _log.info(
+            "collection_status",
+            collection_name=name,
+            exists=True,
+            created=False,
+            vector_size=vector_size,
+        )
         return
 
     await client.create_collection(
@@ -42,4 +53,11 @@ async def ensure_collection(
         sparse_vectors_config={
             "sparse": models.SparseVectorParams(),
         },
+    )
+    _log.info(
+        "collection_status",
+        collection_name=name,
+        exists=False,
+        created=True,
+        vector_size=vector_size,
     )

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from qdrant_client import models
+from structlog.testing import capture_logs
 
 from research_agent.retrieval.collection import ensure_collection
 
@@ -99,3 +100,36 @@ class TestEnsureCollection:
         kwargs = client.create_collection.call_args.kwargs
         dense_cfg: models.VectorParams = kwargs["vectors_config"]["dense"]
         assert dense_cfg.size == 1024
+
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestEnsureCollectionLogging:
+    async def test_logs_collection_status_when_already_exists(self) -> None:
+        client = make_client(collection_exists=True)
+        with capture_logs() as cap:
+            await ensure_collection(client, "my_coll", vector_size=512)
+        events = [e["event"] for e in cap]
+        assert "collection_status" in events
+        entry = next(e for e in cap if e["event"] == "collection_status")
+        assert entry["log_level"] == "info"
+        assert entry["collection_name"] == "my_coll"
+        assert entry["exists"] is True
+        assert entry["created"] is False
+
+    async def test_logs_collection_status_when_created(self) -> None:
+        client = make_client(collection_exists=False)
+        with capture_logs() as cap:
+            await ensure_collection(client, "new_coll", vector_size=768)
+        events = [e["event"] for e in cap]
+        assert "collection_status" in events
+        entry = next(e for e in cap if e["event"] == "collection_status")
+        assert entry["log_level"] == "info"
+        assert entry["collection_name"] == "new_coll"
+        assert entry["exists"] is False
+        assert entry["created"] is True
+        assert entry["vector_size"] == 768

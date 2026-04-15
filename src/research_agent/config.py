@@ -165,6 +165,19 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
+    # Application metadata
+    # ------------------------------------------------------------------
+
+    app_version: str = Field(
+        default="0.1.0",
+        description="Application version, exposed in the health check response.",
+    )
+    environment: Literal["dev", "staging", "prod"] = Field(
+        default="dev",
+        description="Deployment environment. Controls logging verbosity and error detail.",
+    )
+
+    # ------------------------------------------------------------------
     # LangSmith (AI pipeline tracing — set LANGCHAIN_TRACING_V2=true to enable)
     # ------------------------------------------------------------------
 
